@@ -30,7 +30,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    requireRole(['admin', 'project_lead']);
+    await requireRole(['admin', 'project_lead']);
   } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

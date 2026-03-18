@@ -2,17 +2,17 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import type { UserRole } from '@/lib/types';
 
-interface SessionClaims {
-  publicMetadata?: {
-    role?: string;
-  };
-}
+export async function getUserRole(): Promise<UserRole> {
+  const { userId } = auth();
+  if (!userId) return 'team_member';
 
-export function getUserRole(): UserRole {
-  const { sessionClaims } = auth();
-  const claims = sessionClaims as SessionClaims | null;
-  const role = claims?.publicMetadata?.role;
+  const { data } = await supabaseAdmin
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .single();
 
+  const role = data?.role;
   if (role === 'admin' || role === 'project_lead' || role === 'team_member') {
     return role;
   }
@@ -20,8 +20,8 @@ export function getUserRole(): UserRole {
   return 'team_member';
 }
 
-export function requireRole(allowedRoles: UserRole[]): UserRole {
-  const role = getUserRole();
+export async function requireRole(allowedRoles: UserRole[]): Promise<UserRole> {
+  const role = await getUserRole();
 
   if (!allowedRoles.includes(role)) {
     throw new Error(`Forbidden: role '${role}' not in [${allowedRoles.join(', ')}]`);
@@ -30,8 +30,8 @@ export function requireRole(allowedRoles: UserRole[]): UserRole {
   return role;
 }
 
-export function canEdit(): boolean {
-  const role = getUserRole();
+export async function canEdit(): Promise<boolean> {
+  const role = await getUserRole();
   return role === 'admin' || role === 'project_lead';
 }
 

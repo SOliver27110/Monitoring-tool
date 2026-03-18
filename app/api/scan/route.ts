@@ -34,6 +34,16 @@ interface ProjectMatch {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const GENERIC_LPA_WORDS = ['council', 'borough', 'district', 'county', 'city', 'metropolitan', 'unitary'];
+
+/** Strip generic authority words from an LPA name, e.g. "Bedford Borough" → "Bedford" */
+function shortenLpa(lpa: string): string {
+  const words = lpa.trim().split(/\s+/).filter(
+    (w) => !GENERIC_LPA_WORDS.includes(w.toLowerCase())
+  );
+  return words.join(' ');
+}
+
 /** Split a comma-separated string into trimmed, non-empty terms. */
 function splitTerms(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -72,11 +82,13 @@ function matchArticleToProject(
     }
   }
 
-  // Rule 3: client_name AND lpa
+  // Rule 3: client_name AND lpa (using shortened LPA — drop generic words)
   if (!matched_by && project.client_name && project.lpa) {
+    const lpaShort = shortenLpa(project.lpa);
     if (
       textLower.includes(project.client_name.toLowerCase()) &&
-      textLower.includes(project.lpa.toLowerCase())
+      lpaShort &&
+      textLower.includes(lpaShort.toLowerCase())
     ) {
       matched_by = 'client_lpa';
     }

@@ -73,11 +73,40 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
 
   // Auto-generate boolean search terms
   useEffect(() => {
-    const parts = [form.planning_reference, form.site_name, form.client_name].filter(Boolean);
+    const GENERIC_LPA_WORDS = ['council', 'borough', 'district', 'county', 'city', 'metropolitan', 'unitary'];
+
+    /** Strip generic authority words from an LPA name, e.g. "Bedford Borough" → "Bedford" */
+    function shortenLpa(lpa: string): string {
+      const words = lpa.trim().split(/\s+/).filter(
+        (w) => !GENERIC_LPA_WORDS.includes(w.toLowerCase())
+      );
+      return words.join(' ');
+    }
+
+    /** Wrap a term in double-quotes if it contains spaces. */
+    function q(term: string): string {
+      return term.includes(' ') ? `"${term}"` : term;
+    }
+
+    const parts: string[] = [];
+
+    // Part 1: "site_name" as a phrase
+    if (form.site_name?.trim()) {
+      parts.push(q(form.site_name.trim()));
+    }
+
+    // Part 2: "client_name" AND lpa_short
+    if (form.client_name?.trim() && form.lpa?.trim()) {
+      const lpaShort = shortenLpa(form.lpa);
+      if (lpaShort) {
+        parts.push(`(${q(form.client_name.trim())} AND ${q(lpaShort)})`);
+      }
+    }
+
     if (parts.length > 0) {
       updateField('boolean_search_terms', parts.join(' OR '));
     }
-  }, [form.planning_reference, form.site_name, form.client_name]);
+  }, [form.site_name, form.client_name, form.lpa]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

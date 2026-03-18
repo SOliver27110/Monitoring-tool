@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { searchArticles } from '@/lib/google-news-rss';
-import { analyseContent } from '@/lib/anthropic';
 import { ensureUserInSupabase } from '@/lib/auth';
 
 export const maxDuration = 60;
@@ -20,7 +18,7 @@ export async function POST() {
   }
 
   if (!projects || projects.length === 0) {
-    return NextResponse.json({ message: 'No projects to scan', results: [] });
+    return NextResponse.json({ message: 'No projects to scan', results: [], pending: 0 });
   }
 
   // Get existing source URLs to avoid duplicates
@@ -33,6 +31,12 @@ export async function POST() {
     (existingItems ?? []).map((i) => i.source_url).filter(Boolean)
   );
 
+  const PLANNING_CONTEXT_WORDS = [
+    'planning', 'development', 'homes', 'housing', 'application',
+    'proposal', 'construction', 'building', 'consent', 'permission',
+  ];
+  const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
+
   const results: Array<{
     project_id: string;
     project_name: string;
@@ -40,12 +44,6 @@ export async function POST() {
     articles_ingested: number;
     errors: string[];
   }> = [];
-
-  const PLANNING_CONTEXT_WORDS = [
-    'planning', 'development', 'homes', 'housing', 'application',
-    'proposal', 'construction', 'building', 'consent', 'permission',
-  ];
-  const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
 
   for (const project of projects) {
     const query = project.boolean_search_terms;
@@ -78,15 +76,9 @@ export async function POST() {
       projectResult.articles_found = articles.length;
 
       for (const article of articles) {
-        // Skip duplicates
         if (existingUrls.has(article.url)) continue;
 
-        // Build the text content for analysis
-        const text = [
-          article.title,
-          article.description,
-          article.content,
-        ]
+        const text = [article.title, article.description, article.content]
           .filter(Boolean)
           .join('\n\n');
 
@@ -95,7 +87,8 @@ export async function POST() {
         // Local relevance filter: if the client name doesn't appear in the
         // article but the LPA does, require a planning-context keyword too.
         const lower = text.toLowerCase();
-        const clientAppears = project.client_name &&
+        const clientAppears =
+          project.client_name &&
           lower.includes(project.client_name.toLowerCase());
         if (!clientAppears) {
           const lpaShort = project.lpa
@@ -105,14 +98,14 @@ export async function POST() {
             .trim();
           const lpaAppears = lpaShort && lower.includes(lpaShort.toLowerCase());
           if (lpaAppears) {
-            const hasPlanningContext = PLANNING_CONTEXT_WORDS.some((w) => lower.includes(w));
+            const hasPlanningContext = PLANNING_CONTEXT_WORDS.some((w) =>
+              lower.includes(w)
+            );
             if (!hasPlanningContext) continue;
           }
         }
 
         try {
-          const analysis = await analyseContent(text);
-
           await supabaseAdmin.from('analysis_items').insert({
             project_id: project.id,
             source_text: text,
@@ -120,20 +113,14 @@ export async function POST() {
             source_url: article.url,
             source_name: article.source.name,
             published_at: article.publishedAt,
-            summary: analysis.summary,
-            sentiment: analysis.sentiment,
-            alert_level: analysis.alert_level,
-            notable_voices: analysis.notable_voices,
-            key_themes: analysis.key_themes,
-            recommended_action: analysis.recommended_action,
-            review_status: 'unreviewed',
+            review_status: 'pending_analysis',
             created_by: userId,
           });
 
           existingUrls.add(article.url);
           projectResult.articles_ingested++;
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Analysis failed';
+          const msg = err instanceof Error ? err.message : 'Insert failed';
           projectResult.errors.push(`${article.title}: ${msg}`);
         }
       }
@@ -142,8 +129,6 @@ export async function POST() {
       projectResult.errors.push(msg);
     }
 
-    // Only update last_scanned_at if the feed was fetched successfully —
-    // otherwise a retry would skip articles it never actually saw
     if (feedFetchOk) {
       await supabaseAdmin
         .from('projects')
@@ -160,7 +145,8 @@ export async function POST() {
   const totalIngested = results.reduce((sum, r) => sum + r.articles_ingested, 0);
 
   return NextResponse.json({
-    message: `Scan complete. ${totalIngested} new article(s) ingested.`,
+    message: `Scan complete. ${totalIngested} new article(s) found.`,
     results,
+    pending: totalIngested,
   });
 }

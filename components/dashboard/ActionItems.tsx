@@ -31,7 +31,7 @@ export function ActionItems({ items }: ActionItemsProps) {
         {items.map((item) => (
           <div key={item.id} className="rounded-lg bg-white border border-red-100 p-3">
             <div className="flex flex-wrap items-center gap-2 mb-1">
-              <ItemAlertBadge level={item.alert_level} />
+              <ItemAlertBadge level={item.alert_level ?? 'Routine'} />
               <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
                 {item.sentiment}
               </Badge>

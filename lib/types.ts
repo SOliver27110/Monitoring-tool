@@ -69,7 +69,7 @@ export type SourceType =
   | 'planning_document'
   | 'other';
 
-export type ReviewStatus = 'unreviewed' | 'approved' | 'dismissed';
+export type ReviewStatus = 'pending_analysis' | 'unreviewed' | 'approved' | 'dismissed';
 
 export interface AnalysisResult {
   summary: string;
@@ -89,12 +89,12 @@ export interface AnalysisItem {
   source_url: string | null;
   source_name: string | null;
   published_at: string | null;
-  summary: string;
-  sentiment: Sentiment;
-  alert_level: ItemAlertLevel;
+  summary: string | null;
+  sentiment: Sentiment | null;
+  alert_level: ItemAlertLevel | null;
   notable_voices: string[];
   key_themes: string[];
-  recommended_action: string;
+  recommended_action: string | null;
   review_status: ReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;

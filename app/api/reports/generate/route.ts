@@ -37,8 +37,8 @@ function getWeekBounds(): { weekStart: Date; weekEnd: Date; lastWeekStart: Date 
 }
 
 function calculateSentimentTrend(
-  thisWeekItems: Array<{ sentiment: string }>,
-  lastWeekItems: Array<{ sentiment: string }>
+  thisWeekItems: Array<{ sentiment: string | null }>,
+  lastWeekItems: Array<{ sentiment: string | null }>
 ): SentimentTrend {
   if (lastWeekItems.length === 0) return 'stable';
 

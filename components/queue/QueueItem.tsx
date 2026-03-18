@@ -22,7 +22,8 @@ const sentimentVariant: Record<Sentiment, 'success' | 'default' | 'danger' | 'wa
 };
 
 export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: QueueItemProps) {
-  const isActionRequired = item.alert_level === 'Action Required';
+  const isPending = item.review_status === 'pending_analysis';
+  const isActionRequired = !isPending && item.alert_level === 'Action Required';
 
   return (
     <div
@@ -30,16 +31,23 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
       className={`
         rounded-lg border bg-white p-4 transition-all cursor-pointer
         ${isActionRequired ? 'border-l-4 border-l-red-500' : ''}
+        ${isPending ? 'opacity-60' : ''}
         ${selected ? 'ring-2 ring-brand-purple border-brand-purple' : 'border-gray-200 hover:border-gray-300'}
       `}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
-              {item.sentiment}
-            </Badge>
-            <ItemAlertBadge level={item.alert_level as AnalysisItem['alert_level']} />
+            {isPending ? (
+              <Badge variant="default">Analysing…</Badge>
+            ) : (
+              <>
+                <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
+                  {item.sentiment}
+                </Badge>
+                <ItemAlertBadge level={(item.alert_level ?? 'Routine') as NonNullable<AnalysisItem['alert_level']>} />
+              </>
+            )}
             {item.project && (
               <Badge variant="purple">
                 {item.project.client_name}
@@ -60,8 +68,10 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
               )}
             </div>
           )}
-          <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
-          <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>
+          <p className="text-sm text-gray-900 mb-1">{isPending ? 'Waiting for analysis…' : item.summary}</p>
+          {!isPending && (
+            <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>
+          )}
           {item.source_url && (
             <a
               href={item.source_url}

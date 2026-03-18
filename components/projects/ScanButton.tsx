@@ -47,7 +47,12 @@ export function ScanButton({ onComplete }: { onComplete?: () => void }) {
 
       const data = (await res.json()) as ScanResponse;
       const detail = data.stats ? formatStats(data.stats) : data.message;
-      showToast(`Scan complete: ${detail}`, 'success');
+
+      if (data.errors && data.errors.length > 0) {
+        showToast(`Scan complete: ${detail}\nErrors: ${data.errors.join('; ')}`, 'error');
+      } else {
+        showToast(`Scan complete: ${detail}`, 'success');
+      }
       onComplete?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Scan failed';

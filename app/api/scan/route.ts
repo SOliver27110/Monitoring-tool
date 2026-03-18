@@ -288,6 +288,8 @@ export async function POST() {
   const matchedCount = articleMatches.size;
 
   const stats = {
+    total_projects: (projects as ProjectRow[]).length,
+    projects_with_query: (projects as ProjectRow[]).filter((p) => !!p.boolean_search_terms).length,
     total_fetched: totalFetched,
     unique_after_dedup: uniqueArticles.length,
     matched_at_least_one_project: matchedCount,

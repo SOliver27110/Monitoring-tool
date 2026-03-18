@@ -6,6 +6,8 @@ import { useToast } from '@/components/ui/Toast';
 import { Radar } from 'lucide-react';
 
 interface ScanStats {
+  total_projects: number;
+  projects_with_query: number;
   total_fetched: number;
   unique_after_dedup: number;
   matched_at_least_one_project: number;
@@ -22,6 +24,7 @@ interface ScanResponse {
 
 function formatStats(stats: ScanStats): string {
   const parts = [
+    `${stats.total_projects} projects (${stats.projects_with_query} with query)`,
     `${stats.total_fetched} fetched`,
     `${stats.unique_after_dedup} unique`,
     `${stats.matched_at_least_one_project} matched`,

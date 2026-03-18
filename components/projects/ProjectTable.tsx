@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { RoleGate } from '@/components/ui/RoleGate';
 import { Button } from '@/components/ui/Button';
+import { ScanButton } from '@/components/projects/ScanButton';
 import { FolderKanban, Plus, Pencil } from 'lucide-react';
 import type { Project, AlertLevel } from '@/lib/types';
 
@@ -86,6 +87,7 @@ export function ProjectTable() {
           />
         </div>
         <RoleGate allowedRoles={['admin', 'project_lead']}>
+          <ScanButton onComplete={fetchProjects} />
           <Link href="/projects/new">
             <Button size="md">
               <Plus className="h-4 w-4" />

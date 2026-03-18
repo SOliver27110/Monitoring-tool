@@ -5,17 +5,28 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { Radar } from 'lucide-react';
 
-interface ScanResult {
-  project_id: string;
-  project_name: string;
-  articles_found: number;
-  articles_ingested: number;
-  errors: string[];
+interface ScanStats {
+  total_fetched: number;
+  unique_after_dedup: number;
+  matched_at_least_one_project: number;
+  matched_multiple_projects: number;
+  analysed: number;
 }
 
 interface ScanResponse {
   message: string;
-  results: ScanResult[];
+  stats: ScanStats | null;
+  errors?: string[];
+}
+
+function formatStats(stats: ScanStats): string {
+  return [
+    `${stats.total_fetched} fetched`,
+    `${stats.unique_after_dedup} unique`,
+    `${stats.matched_at_least_one_project} matched`,
+    `${stats.matched_multiple_projects} multi-project`,
+    `${stats.analysed} analysed`,
+  ].join(' · ');
 }
 
 export function ScanButton({ onComplete }: { onComplete?: () => void }) {
@@ -32,7 +43,8 @@ export function ScanButton({ onComplete }: { onComplete?: () => void }) {
       }
 
       const data = (await res.json()) as ScanResponse;
-      showToast(data.message, 'success');
+      const detail = data.stats ? formatStats(data.stats) : data.message;
+      showToast(`Scan complete: ${detail}`, 'success');
       onComplete?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Scan failed';

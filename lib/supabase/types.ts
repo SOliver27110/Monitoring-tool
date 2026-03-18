@@ -38,6 +38,7 @@ export interface Database {
           planning_reference: string | null;
           lpa: string;
           boolean_search_terms: string;
+          exclusion_terms: string | null;
           assigned_lead_id: string | null;
           application_stage: string;
           key_dates: Record<string, string>;
@@ -53,6 +54,7 @@ export interface Database {
           planning_reference?: string | null;
           lpa: string;
           boolean_search_terms: string;
+          exclusion_terms?: string | null;
           assigned_lead_id?: string | null;
           application_stage: string;
           key_dates?: Record<string, string>;
@@ -67,6 +69,7 @@ export interface Database {
           planning_reference?: string;
           lpa?: string;
           boolean_search_terms?: string;
+          exclusion_terms?: string | null;
           assigned_lead_id?: string | null;
           application_stage?: string;
           key_dates?: Record<string, string>;
@@ -88,6 +91,7 @@ export interface Database {
           notable_voices: string[];
           key_themes: string[];
           recommended_action: string;
+          matched_by: string | null;
           review_status: string;
           reviewed_by: string | null;
           reviewed_at: string | null;
@@ -107,6 +111,7 @@ export interface Database {
           notable_voices?: string[];
           key_themes?: string[];
           recommended_action: string;
+          matched_by?: string | null;
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
@@ -118,6 +123,7 @@ export interface Database {
           project_id?: string | null;
           source_type?: string | null;
           source_url?: string | null;
+          matched_by?: string | null;
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { searchArticles } from '@/lib/newsapi';
+import { searchArticles } from '@/lib/google-news-rss';
 import { analyseContent } from '@/lib/anthropic';
 import { ensureUserInSupabase } from '@/lib/auth';
 
@@ -107,11 +107,14 @@ export async function POST() {
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'NewsAPI fetch failed';
+      const msg = err instanceof Error ? err.message : 'Feed fetch failed';
       projectResult.errors.push(msg);
     }
 
     results.push(projectResult);
+
+    // Delay between projects to avoid rate limiting from Google
+    await new Promise((r) => setTimeout(r, 1500));
   }
 
   const totalIngested = results.reduce((sum, r) => sum + r.articles_ingested, 0);

@@ -158,7 +158,7 @@ export default function ProjectDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Card>
           <div className="text-sm text-gray-500">Planning Reference</div>
-          <div className="mt-1 font-medium">{project.planning_reference}</div>
+          <div className="mt-1 font-medium">{project.planning_reference ?? '—'}</div>
         </Card>
         <Card>
           <div className="text-sm text-gray-500">LPA</div>

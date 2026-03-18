@@ -42,7 +42,7 @@ export async function PUT(
     .update({
       client_name: body.client_name,
       site_name: body.site_name,
-      planning_reference: body.planning_reference,
+      planning_reference: body.planning_reference || null,
       lpa: body.lpa,
       boolean_search_terms: body.boolean_search_terms,
       assigned_lead_id: body.assigned_lead_id || null,

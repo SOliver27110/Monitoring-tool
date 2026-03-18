@@ -35,7 +35,7 @@ export interface Database {
           id: string;
           client_name: string;
           site_name: string;
-          planning_reference: string;
+          planning_reference: string | null;
           lpa: string;
           boolean_search_terms: string;
           assigned_lead_id: string | null;
@@ -51,7 +51,7 @@ export interface Database {
           id?: string;
           client_name: string;
           site_name: string;
-          planning_reference: string;
+          planning_reference?: string | null;
           lpa: string;
           boolean_search_terms: string;
           assigned_lead_id?: string | null;

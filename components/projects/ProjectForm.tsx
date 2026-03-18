@@ -39,7 +39,7 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
     initialData ?? {
       client_name: '',
       site_name: '',
-      planning_reference: '',
+      planning_reference: null,
       lpa: '',
       boolean_search_terms: '',
       assigned_lead_id: null,
@@ -152,9 +152,8 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
         <Input
           id="planning_reference"
           label="Planning Reference"
-          required
-          value={form.planning_reference}
-          onChange={(e) => updateField('planning_reference', e.target.value)}
+          value={form.planning_reference ?? ''}
+          onChange={(e) => updateField('planning_reference', e.target.value || null)}
           placeholder="e.g. 24/01234/FUL"
         />
         <Input

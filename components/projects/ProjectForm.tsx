@@ -71,13 +71,17 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
     }));
   }
 
-  // Auto-generate boolean search terms
+  // Auto-generate search terms for Google News RSS
+  // Skip planning reference (rarely appears in news articles)
+  // Quote multi-word phrases so Google treats them as exact matches
   useEffect(() => {
-    const parts = [form.planning_reference, form.site_name, form.client_name].filter(Boolean);
+    const parts = [form.site_name, form.client_name]
+      .filter(Boolean)
+      .map((term) => (term.includes(' ') ? `"${term}"` : term));
     if (parts.length > 0) {
       updateField('boolean_search_terms', parts.join(' OR '));
     }
-  }, [form.planning_reference, form.site_name, form.client_name]);
+  }, [form.site_name, form.client_name]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -156,10 +160,10 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
             required
             value={form.boolean_search_terms}
             onChange={(e) => updateField('boolean_search_terms', e.target.value)}
-            placeholder="Auto-generated from reference, site name, and client"
+            placeholder='e.g. "Castle Hills Solar Farm" OR "Total Energies"'
           />
           <p className="mt-1 text-xs text-gray-400">
-            Auto-generated. Edit to refine your monitoring search query.
+            Auto-generated from site and client names. Edit to refine your Google News search query.
           </p>
         </div>
         <Select

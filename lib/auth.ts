@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import type { UserRole } from '@/lib/types';
 
 interface SessionClaims {
-  metadata?: {
+  publicMetadata?: {
     role?: string;
   };
 }
@@ -11,7 +11,7 @@ interface SessionClaims {
 export function getUserRole(): UserRole {
   const { sessionClaims } = auth();
   const claims = sessionClaims as SessionClaims | null;
-  const role = claims?.metadata?.role;
+  const role = claims?.publicMetadata?.role;
 
   if (role === 'admin' || role === 'project_lead' || role === 'team_member') {
     return role;

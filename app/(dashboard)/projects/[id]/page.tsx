@@ -14,7 +14,7 @@ import { SentimentTrend } from '@/components/dashboard/SentimentTrend';
 import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
-import { Pencil, FileText, BarChart3 } from 'lucide-react';
+import { Pencil, FileText, BarChart3, ExternalLink } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
 function getWeekBounds(): { thisWeekStart: string; lastWeekStart: string; lastWeekEnd: string } {
@@ -228,11 +228,31 @@ export default function ProjectDashboardPage() {
                       >
                         {item.sentiment}
                       </Badge>
+                      {item.source_name && (
+                        <span className="text-xs font-medium text-gray-600">
+                          {item.source_name}
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400">
-                        {new Date(item.created_at).toLocaleDateString('en-GB')}
+                        {new Date(item.published_at || item.created_at).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </span>
                     </div>
                     <p className="text-sm text-gray-900">{item.summary}</p>
+                    {item.source_url && (
+                      <a
+                        href={item.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs text-brand-purple hover:underline"
+                      >
+                        Read full article
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

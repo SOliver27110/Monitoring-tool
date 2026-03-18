@@ -87,6 +87,8 @@ export interface AnalysisItem {
   source_text: string;
   source_type: SourceType | null;
   source_url: string | null;
+  source_name: string | null;
+  published_at: string | null;
   summary: string;
   sentiment: Sentiment;
   alert_level: ItemAlertLevel;

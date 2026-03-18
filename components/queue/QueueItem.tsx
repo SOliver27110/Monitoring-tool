@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/Badge';
 import { ItemAlertBadge } from '@/components/ui/AlertBadge';
 import { Button } from '@/components/ui/Button';
-import { Check, X } from 'lucide-react';
+import { Check, X, ExternalLink } from 'lucide-react';
 import type { AnalysisItem, Sentiment } from '@/lib/types';
 
 interface QueueItemProps {
@@ -46,8 +46,34 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
               </Badge>
             )}
           </div>
+          {(item.source_name || item.published_at) && (
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              {item.source_name && (
+                <span className="text-xs font-medium text-gray-600">{item.source_name}</span>
+              )}
+              {item.published_at && (
+                <span className="text-xs text-gray-400">
+                  {new Date(item.published_at).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </span>
+              )}
+            </div>
+          )}
           <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
           <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>
+          {item.source_url && (
+            <a
+              href={item.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 inline-flex items-center gap-1 text-xs text-brand-purple hover:underline"
+            >
+              Read full article
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
 
           {item.notable_voices.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">

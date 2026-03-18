@@ -85,6 +85,8 @@ export interface Database {
           source_text: string;
           source_type: string | null;
           source_url: string | null;
+          source_name: string | null;
+          published_at: string | null;
           summary: string;
           sentiment: string;
           alert_level: string;
@@ -104,6 +106,8 @@ export interface Database {
           source_text: string;
           source_type?: string | null;
           source_url?: string | null;
+          source_name?: string | null;
+          published_at?: string | null;
           summary: string;
           sentiment: string;
           alert_level: string;
@@ -121,6 +125,8 @@ export interface Database {
           project_id?: string | null;
           source_type?: string | null;
           source_url?: string | null;
+          source_name?: string | null;
+          published_at?: string | null;
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;

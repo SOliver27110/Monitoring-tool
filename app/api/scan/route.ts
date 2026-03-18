@@ -92,6 +92,8 @@ export async function POST() {
             source_text: text,
             source_type: 'news_article',
             source_url: article.url,
+            source_name: article.source.name,
+            published_at: article.publishedAt,
             summary: analysis.summary,
             sentiment: analysis.sentiment,
             alert_level: analysis.alert_level,

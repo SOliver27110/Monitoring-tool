@@ -72,24 +72,75 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
   }
 
   // Auto-generate search terms for Google News RSS
-  // Format: "site_name" OR ("client_name" AND "lpa_short")
-  // lpa_short strips generic council/authority words from the LPA
+  // Format: ("site_parts" AND "client") OR ("site_parts" AND "lpa_short")
   useEffect(() => {
-    const quote = (s: string) => (s.includes(' ') ? `"${s}"` : s);
     const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
+    const SITE_STOP_WORDS = [
+      'land', 'north', 'south', 'east', 'west', 'of', 'at', 'the', 'off',
+      'near', 'adjacent', 'behind', 'opposite', 'site', 'plot', 'phase',
+      'area', 'proposed', 'development', 'former',
+    ];
+    const ROAD_SUFFIXES = [
+      'road', 'street', 'lane', 'way', 'close', 'drive', 'avenue', 'crescent',
+      'court', 'place', 'terrace', 'grove', 'gardens', 'park', 'hill', 'rise',
+      'view', 'walk', 'mews', 'square', 'row', 'passage', 'boulevard', 'path',
+      'trail', 'green', 'common', 'fields', 'meadow',
+    ];
+
+    // Process site name: remove stop words, split into segments at road suffixes,
+    // then drop road-name segments when more specific place-name segments exist.
+    function processSiteName(name: string): string[] {
+      const words = name
+        .split(/\s+/)
+        .filter((w) => !SITE_STOP_WORDS.includes(w.toLowerCase()));
+      if (words.length === 0) return [];
+
+      // Split into segments — a road suffix ends the current segment
+      const segments: string[][] = [];
+      let current: string[] = [];
+      for (const word of words) {
+        current.push(word);
+        if (ROAD_SUFFIXES.includes(word.toLowerCase())) {
+          segments.push([...current]);
+          current = [];
+        }
+      }
+      if (current.length > 0) segments.push(current);
+
+      // If we have both road-name and place-name segments, drop road-name ones
+      if (segments.length > 1) {
+        const placeSegments = segments.filter(
+          (seg) => !ROAD_SUFFIXES.includes(seg[seg.length - 1].toLowerCase())
+        );
+        if (placeSegments.length > 0) return placeSegments.map((s) => s.join(' '));
+      }
+
+      return segments.map((s) => s.join(' '));
+    }
+
+    const siteParts = processSiteName(form.site_name);
+    const siteTerms = siteParts.map((p) => `"${p}"`).join(' AND ');
+
     const lpaShort = form.lpa
       .split(' ')
       .filter((w) => !LPA_STOP_WORDS.includes(w.toLowerCase()))
       .join(' ')
       .trim();
 
-    const sitePart = form.site_name ? quote(form.site_name) : '';
-    const clientLpaPart =
-      form.client_name && lpaShort
-        ? `(${quote(form.client_name)} AND ${quote(lpaShort)})`
-        : '';
+    const clientQuoted = form.client_name ? `"${form.client_name}"` : '';
+    const lpaQuoted = lpaShort ? `"${lpaShort}"` : '';
 
-    const query = [sitePart, clientLpaPart].filter(Boolean).join(' OR ');
+    let query = '';
+    if (siteTerms && clientQuoted && lpaQuoted) {
+      query = `(${siteTerms} AND ${clientQuoted}) OR (${siteTerms} AND ${lpaQuoted})`;
+    } else if (siteTerms && clientQuoted) {
+      query = `(${siteTerms} AND ${clientQuoted})`;
+    } else if (siteTerms && lpaQuoted) {
+      query = `(${siteTerms} AND ${lpaQuoted})`;
+    } else if (siteTerms) {
+      query = siteTerms;
+    }
+
     if (query) {
       updateField('boolean_search_terms', query);
     }

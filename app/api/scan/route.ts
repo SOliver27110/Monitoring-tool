@@ -13,7 +13,7 @@ export async function POST() {
   // Fetch all projects with boolean search terms
   const { data: projects, error: projErr } = await supabaseAdmin
     .from('projects')
-    .select('id, client_name, site_name, boolean_search_terms, last_scanned_at');
+    .select('id, client_name, site_name, lpa, boolean_search_terms, last_scanned_at');
 
   if (projErr) {
     return NextResponse.json({ error: projErr.message }, { status: 500 });
@@ -40,6 +40,12 @@ export async function POST() {
     articles_ingested: number;
     errors: string[];
   }> = [];
+
+  const PLANNING_CONTEXT_WORDS = [
+    'planning', 'development', 'homes', 'housing', 'application',
+    'proposal', 'construction', 'building', 'consent', 'permission',
+  ];
+  const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
 
   for (const project of projects) {
     const query = project.boolean_search_terms;
@@ -85,6 +91,24 @@ export async function POST() {
           .join('\n\n');
 
         if (!text.trim()) continue;
+
+        // Local relevance filter: if the client name doesn't appear in the
+        // article but the LPA does, require a planning-context keyword too.
+        const lower = text.toLowerCase();
+        const clientAppears = project.client_name &&
+          lower.includes(project.client_name.toLowerCase());
+        if (!clientAppears) {
+          const lpaShort = project.lpa
+            .split(' ')
+            .filter((w: string) => !LPA_STOP_WORDS.includes(w.toLowerCase()))
+            .join(' ')
+            .trim();
+          const lpaAppears = lpaShort && lower.includes(lpaShort.toLowerCase());
+          if (lpaAppears) {
+            const hasPlanningContext = PLANNING_CONTEXT_WORDS.some((w) => lower.includes(w));
+            if (!hasPlanningContext) continue;
+          }
+        }
 
         try {
           const analysis = await analyseContent(text);

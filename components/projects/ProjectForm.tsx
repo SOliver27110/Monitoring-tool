@@ -130,13 +130,15 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
     const clientQuoted = form.client_name ? `"${form.client_name}"` : '';
     const lpaQuoted = lpaShort ? `"${lpaShort}"` : '';
 
+    const PLANNING_CONTEXT = '("planning" OR "development" OR "homes" OR "housing" OR "application" OR "proposal" OR "construction" OR "building" OR "consent" OR "permission")';
+
     let query = '';
     if (siteTerms && clientQuoted && lpaQuoted) {
-      query = `(${siteTerms} AND ${clientQuoted}) OR (${siteTerms} AND ${lpaQuoted})`;
+      query = `(${siteTerms} AND ${clientQuoted}) OR (${siteTerms} AND ${lpaQuoted} AND ${PLANNING_CONTEXT})`;
     } else if (siteTerms && clientQuoted) {
       query = `(${siteTerms} AND ${clientQuoted})`;
     } else if (siteTerms && lpaQuoted) {
-      query = `(${siteTerms} AND ${lpaQuoted})`;
+      query = `(${siteTerms} AND ${lpaQuoted} AND ${PLANNING_CONTEXT})`;
     } else if (siteTerms) {
       query = siteTerms;
     }

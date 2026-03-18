@@ -27,8 +27,14 @@ export function ScanButton({ onComplete }: { onComplete?: () => void }) {
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? 'Scan failed');
+        const text = await res.text();
+        let message = 'Scan failed';
+        try {
+          message = JSON.parse(text).error ?? message;
+        } catch {
+          message = text || message;
+        }
+        throw new Error(message);
       }
 
       const data = (await res.json()) as ScanResponse;

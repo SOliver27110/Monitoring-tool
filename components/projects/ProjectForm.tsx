@@ -72,16 +72,28 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
   }
 
   // Auto-generate search terms for Google News RSS
-  // Skip planning reference (rarely appears in news articles)
-  // Quote multi-word phrases so Google treats them as exact matches
+  // Format: "site_name" OR ("client_name" AND "lpa_short")
+  // lpa_short strips generic council/authority words from the LPA
   useEffect(() => {
-    const parts = [form.site_name, form.client_name]
-      .filter(Boolean)
-      .map((term) => (term.includes(' ') ? `"${term}"` : term));
-    if (parts.length > 0) {
-      updateField('boolean_search_terms', parts.join(' OR '));
+    const quote = (s: string) => (s.includes(' ') ? `"${s}"` : s);
+    const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
+    const lpaShort = form.lpa
+      .split(' ')
+      .filter((w) => !LPA_STOP_WORDS.includes(w.toLowerCase()))
+      .join(' ')
+      .trim();
+
+    const sitePart = form.site_name ? quote(form.site_name) : '';
+    const clientLpaPart =
+      form.client_name && lpaShort
+        ? `(${quote(form.client_name)} AND ${quote(lpaShort)})`
+        : '';
+
+    const query = [sitePart, clientLpaPart].filter(Boolean).join(' OR ');
+    if (query) {
+      updateField('boolean_search_terms', query);
     }
-  }, [form.site_name, form.client_name]);
+  }, [form.site_name, form.client_name, form.lpa]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

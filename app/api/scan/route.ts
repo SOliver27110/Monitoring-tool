@@ -13,7 +13,7 @@ export async function POST() {
   // Fetch all projects with boolean search terms
   const { data: projects, error: projErr } = await supabaseAdmin
     .from('projects')
-    .select('id, client_name, site_name, boolean_search_terms');
+    .select('id, client_name, site_name, boolean_search_terms, last_scanned_at');
 
   if (projErr) {
     return NextResponse.json({ error: projErr.message }, { status: 500 });
@@ -63,7 +63,10 @@ export async function POST() {
     };
 
     try {
-      const articles = await searchArticles(query, 10);
+      const after = project.last_scanned_at
+        ? new Date(project.last_scanned_at)
+        : undefined;
+      const articles = await searchArticles(query, 10, after);
       projectResult.articles_found = articles.length;
 
       for (const article of articles) {
@@ -110,6 +113,12 @@ export async function POST() {
       const msg = err instanceof Error ? err.message : 'Feed fetch failed';
       projectResult.errors.push(msg);
     }
+
+    // Record the scan timestamp for this project
+    await supabaseAdmin
+      .from('projects')
+      .update({ last_scanned_at: new Date().toISOString() })
+      .eq('id', project.id);
 
     results.push(projectResult);
 

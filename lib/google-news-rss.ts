@@ -18,9 +18,15 @@ const parser = new Parser();
  */
 export async function searchArticles(
   query: string,
-  pageSize = 20
+  pageSize = 20,
+  after?: Date
 ): Promise<NewsApiArticle[]> {
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-GB&gl=GB&ceid=GB:en`;
+  let searchQuery = query;
+  if (after) {
+    const afterStr = after.toISOString().split('T')[0]; // YYYY-MM-DD
+    searchQuery = `${query} after:${afterStr}`;
+  }
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-GB&gl=GB&ceid=GB:en`;
 
   try {
     const feed = await parser.parseURL(url);

@@ -42,6 +42,7 @@ export interface Database {
           application_stage: string;
           key_dates: Record<string, string>;
           alert_level: string;
+          last_scanned_at: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -57,6 +58,7 @@ export interface Database {
           application_stage: string;
           key_dates?: Record<string, string>;
           alert_level?: string;
+          last_scanned_at?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -71,6 +73,7 @@ export interface Database {
           application_stage?: string;
           key_dates?: Record<string, string>;
           alert_level?: string;
+          last_scanned_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];

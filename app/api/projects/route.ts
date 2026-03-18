@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { ensureUserInSupabase, requireRole } from '@/lib/auth';
+import { ensureUserInSupabase } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   const { userId } = auth();
@@ -41,12 +41,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    requireRole(['admin', 'project_lead']);
-  } catch {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   const userId = await ensureUserInSupabase();
   const body = await req.json();
 

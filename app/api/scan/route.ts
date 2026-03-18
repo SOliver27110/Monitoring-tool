@@ -73,7 +73,7 @@ export async function POST() {
       const after = project.last_scanned_at
         ? new Date(project.last_scanned_at)
         : undefined;
-      const articles = await searchArticles(query, 10, after);
+      const articles = await searchArticles(query, 20, after);
       feedFetchOk = true;
       projectResult.articles_found = articles.length;
 

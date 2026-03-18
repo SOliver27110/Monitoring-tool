@@ -158,7 +158,8 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
             placeholder="Auto-generated from reference, site name, and client"
           />
           <p className="mt-1 text-xs text-gray-400">
-            Auto-generated. Edit to refine your monitoring search query.
+            Passed directly to NewsAPI. Supports AND / OR / NOT and &quot;quoted phrases&quot;.
+            Auto-generated from project fields — edit to refine.
           </p>
         </div>
         <Select

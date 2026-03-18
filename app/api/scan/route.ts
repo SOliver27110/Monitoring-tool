@@ -43,13 +43,13 @@ function splitTerms(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Case-insensitive substring check. */
-function textContains(haystack: string, needle: string): boolean {
-  return haystack.toLowerCase().includes(needle.toLowerCase());
-}
-
 /**
- * Match a single article's text against a single project.
+ * Match a single article's text against a single project using structured
+ * fields only. Rules are checked in priority order; first match wins.
+ *
+ * Does NOT use boolean_search_terms — that field is the NewsAPI query
+ * (supports AND/OR/NOT syntax) and is not suitable for substring matching.
+ *
  * Returns the matched_by reason, or null if no match (or excluded).
  */
 function matchArticleToProject(
@@ -82,18 +82,7 @@ function matchArticleToProject(
     }
   }
 
-  // Rule 4: any individual boolean_search_terms term
-  if (!matched_by) {
-    const terms = splitTerms(project.boolean_search_terms);
-    for (const term of terms) {
-      if (textLower.includes(term.toLowerCase())) {
-        matched_by = 'boolean_terms';
-        break;
-      }
-    }
-  }
-
-  // Rule 5: exclusion — if matched but an exclusion term also appears, reject
+  // Rule 4: exclusion — if matched but an exclusion term also appears, reject
   if (matched_by) {
     const exclusions = splitTerms(project.exclusion_terms);
     for (const ex of exclusions) {
@@ -131,15 +120,30 @@ export async function POST() {
     return NextResponse.json({ message: 'No projects to scan', stats: null });
   }
 
-  // Existing URLs in analysis_items — skip these entirely
+  // Build a per-project set of existing URLs so we only skip an article for
+  // a project that already has it — not globally across all projects.
   const { data: existingItems } = await supabaseAdmin
     .from('analysis_items')
-    .select('source_url')
+    .select('source_url, project_id')
     .not('source_url', 'is', null);
 
-  const existingUrls = new Set(
-    (existingItems ?? []).map((i: { source_url: string | null }) => i.source_url).filter(Boolean)
-  );
+  const existingByProject = new Map<string, Set<string>>();
+  for (const item of existingItems ?? []) {
+    if (!item.source_url || !item.project_id) continue;
+    let urls = existingByProject.get(item.project_id);
+    if (!urls) {
+      urls = new Set();
+      existingByProject.set(item.project_id, urls);
+    }
+    urls.add(item.source_url);
+  }
+
+  // Also track all known URLs so we can reuse existing analysis text instead
+  // of calling Anthropic again for articles we've already analysed.
+  const allExistingUrls = new Set<string>();
+  for (const item of existingItems ?? []) {
+    if (item.source_url) allExistingUrls.add(item.source_url);
+  }
 
   // Fetch articles for every project, collect into a URL-keyed map
   const articlesByUrl = new Map<string, UniqueArticle>();
@@ -154,7 +158,6 @@ export async function POST() {
       totalFetched += articles.length;
 
       for (const article of articles) {
-        if (existingUrls.has(article.url)) continue;
         if (articlesByUrl.has(article.url)) continue;
 
         const text = [article.title, article.description, article.content]
@@ -174,7 +177,7 @@ export async function POST() {
   const uniqueArticles = Array.from(articlesByUrl.values());
 
   // =========================================================================
-  // Stage 2 — Match each article against ALL projects
+  // Stage 2 — Match each article against ALL projects (per-project dedup)
   // =========================================================================
 
   const articleMatches = new Map<string, ProjectMatch[]>(); // url → matches
@@ -184,6 +187,10 @@ export async function POST() {
     const matches: ProjectMatch[] = [];
 
     for (const project of projects as ProjectRow[]) {
+      // Per-project dedup: skip if this project already has this URL
+      const projectUrls = existingByProject.get(project.id);
+      if (projectUrls?.has(article.url)) continue;
+
       const matched_by = matchArticleToProject(textLower, project);
       if (matched_by) {
         matches.push({ project_id: project.id, matched_by });
@@ -200,6 +207,7 @@ export async function POST() {
   // =========================================================================
 
   let analysedCount = 0;
+  let reusedCount = 0;
   let multiMatchCount = 0;
   const analyseErrors: string[] = [];
 
@@ -210,8 +218,30 @@ export async function POST() {
     if (matches.length > 1) multiMatchCount++;
 
     try {
-      // Call Anthropic ONCE per unique article
-      const analysis = await analyseContent(text);
+      let analysis;
+
+      if (allExistingUrls.has(article.url)) {
+        // Article was already analysed for another project — reuse that analysis
+        const { data: existing } = await supabaseAdmin
+          .from('analysis_items')
+          .select('summary, sentiment, alert_level, notable_voices, key_themes, recommended_action')
+          .eq('source_url', article.url)
+          .limit(1)
+          .single();
+
+        if (existing) {
+          analysis = existing;
+          reusedCount++;
+        } else {
+          // Shouldn't happen, but fall back to fresh analysis
+          analysis = await analyseContent(text);
+          analysedCount++;
+        }
+      } else {
+        // New article — call Anthropic once
+        analysis = await analyseContent(text);
+        analysedCount++;
+      }
 
       // Insert one row per matched project
       for (const match of matches) {
@@ -232,8 +262,7 @@ export async function POST() {
         });
       }
 
-      analysedCount++;
-      existingUrls.add(article.url);
+      allExistingUrls.add(article.url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Analysis failed';
       analyseErrors.push(`${article.title}: ${msg}`);
@@ -252,12 +281,13 @@ export async function POST() {
     matched_at_least_one_project: matchedCount,
     matched_multiple_projects: multiMatchCount,
     analysed: analysedCount,
+    reused: reusedCount,
   };
 
   const errors = [...fetchErrors, ...analyseErrors];
 
   return NextResponse.json({
-    message: `Scan complete. ${analysedCount} article(s) analysed, ${matchedCount} matched.`,
+    message: `Scan complete. ${analysedCount} article(s) analysed, ${reusedCount} reused, ${matchedCount} matched.`,
     stats,
     errors: errors.length > 0 ? errors : undefined,
   });

@@ -11,6 +11,7 @@ interface ScanStats {
   matched_at_least_one_project: number;
   matched_multiple_projects: number;
   analysed: number;
+  reused: number;
 }
 
 interface ScanResponse {
@@ -20,13 +21,15 @@ interface ScanResponse {
 }
 
 function formatStats(stats: ScanStats): string {
-  return [
+  const parts = [
     `${stats.total_fetched} fetched`,
     `${stats.unique_after_dedup} unique`,
     `${stats.matched_at_least_one_project} matched`,
     `${stats.matched_multiple_projects} multi-project`,
     `${stats.analysed} analysed`,
-  ].join(' · ');
+  ];
+  if (stats.reused > 0) parts.push(`${stats.reused} reused`);
+  return parts.join(' · ');
 }
 
 export function ScanButton({ onComplete }: { onComplete?: () => void }) {

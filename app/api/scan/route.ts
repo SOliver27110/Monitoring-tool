@@ -62,11 +62,13 @@ export async function POST() {
       errors: [] as string[],
     };
 
+    let feedFetchOk = false;
     try {
       const after = project.last_scanned_at
         ? new Date(project.last_scanned_at)
         : undefined;
       const articles = await searchArticles(query, 10, after);
+      feedFetchOk = true;
       projectResult.articles_found = articles.length;
 
       for (const article of articles) {
@@ -116,11 +118,14 @@ export async function POST() {
       projectResult.errors.push(msg);
     }
 
-    // Record the scan timestamp for this project
-    await supabaseAdmin
-      .from('projects')
-      .update({ last_scanned_at: new Date().toISOString() })
-      .eq('id', project.id);
+    // Only update last_scanned_at if the feed was fetched successfully —
+    // otherwise a retry would skip articles it never actually saw
+    if (feedFetchOk) {
+      await supabaseAdmin
+        .from('projects')
+        .update({ last_scanned_at: new Date().toISOString() })
+        .eq('id', project.id);
+    }
 
     results.push(projectResult);
 

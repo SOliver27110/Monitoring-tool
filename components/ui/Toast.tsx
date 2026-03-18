@@ -46,9 +46,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, message, type }]);
 
+    const duration = type === 'error' ? 10000 : 4000;
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, duration);
   }, []);
 
   const dismiss = useCallback((id: string) => {

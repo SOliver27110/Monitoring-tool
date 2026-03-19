@@ -70,7 +70,7 @@ export type SourceType =
   | 'planning_document'
   | 'other';
 
-export type ReviewStatus = 'pending_analysis' | 'unreviewed' | 'approved' | 'dismissed';
+export type ReviewStatus = 'pending_analysis' | 'unreviewed' | 'approved' | 'dismissed' | 'analysis_failed';
 
 export interface AnalysisResult {
   summary: string;

@@ -1,3 +1,4 @@
+// Trigger RSS ingestion for a single project — call once per project from the UI
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
@@ -19,81 +20,30 @@ export async function POST(req: NextRequest) {
   }
 
   const projectId = body.project_id as string | undefined;
-  const all = body.all as boolean | undefined;
 
-  if (!projectId && !all) {
+  if (!projectId) {
     return NextResponse.json(
-      { error: 'Provide either project_id or { all: true }' },
+      { error: 'project_id is required' },
       { status: 400 }
     );
   }
 
-  // Single project
-  if (projectId) {
-    const { data: project, error } = await supabaseAdmin
-      .from('projects')
-      .select('id, lpa, boolean_search_terms, client_name, site_name, planning_reference')
-      .eq('id', projectId)
-      .single();
-
-    if (error || !project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
-
-    const result = await ingestFeedsForProject(project, userId);
-
-    return NextResponse.json({
-      project_id: project.id,
-      ingested: result.ingested,
-      skipped: result.skipped,
-      errors: result.errors,
-    });
-  }
-
-  // All projects
-  const { data: projects, error: projErr } = await supabaseAdmin
+  const { data: project, error } = await supabaseAdmin
     .from('projects')
-    .select('id, lpa, boolean_search_terms, client_name, site_name, planning_reference');
+    .select('id, lpa, boolean_search_terms, client_name, site_name, planning_reference')
+    .eq('id', projectId)
+    .single();
 
-  if (projErr) {
-    return NextResponse.json({ error: projErr.message }, { status: 500 });
+  if (error || !project) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
-  if (!projects || projects.length === 0) {
-    return NextResponse.json({
-      projects_processed: 0,
-      total_ingested: 0,
-      total_skipped: 0,
-      results: [],
-    });
-  }
-
-  const results: Array<{
-    project_id: string;
-    client_name: string;
-    ingested: number;
-    skipped: number;
-    errors: string[];
-  }> = [];
-
-  for (const project of projects) {
-    const result = await ingestFeedsForProject(project, userId);
-    results.push({
-      project_id: project.id,
-      client_name: project.client_name,
-      ingested: result.ingested,
-      skipped: result.skipped,
-      errors: result.errors,
-    });
-  }
-
-  const totalIngested = results.reduce((sum, r) => sum + r.ingested, 0);
-  const totalSkipped = results.reduce((sum, r) => sum + r.skipped, 0);
+  const result = await ingestFeedsForProject(project, userId);
 
   return NextResponse.json({
-    projects_processed: results.length,
-    total_ingested: totalIngested,
-    total_skipped: totalSkipped,
-    results,
+    project_id: project.id,
+    ingested: result.ingested,
+    skipped: result.skipped,
+    errors: result.errors,
   });
 }

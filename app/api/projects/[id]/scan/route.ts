@@ -168,7 +168,13 @@ export async function POST(
   }
 }
 
+// How many Haiku calls to run concurrently
+const ANALYSIS_CONCURRENCY = 5;
+// Stop starting new analyses after this many ms to leave headroom for the response
+const ANALYSIS_TIME_BUDGET_MS = 45_000;
+
 async function runScan(projectId: string, userId: string) {
+  const scanStart = Date.now();
 
   // Fetch project
   const { data: project, error: projErr } = await supabaseAdmin
@@ -205,6 +211,7 @@ async function runScan(projectId: string, userId: string) {
       articles_skipped_duplicate: 0,
       articles_skipped_irrelevant: 0,
       articles_needs_review: 0,
+      articles_pending_analysis: 0,
       errors: [],
     });
   }
@@ -226,10 +233,11 @@ async function runScan(projectId: string, userId: string) {
     articles_skipped_duplicate: 0,
     articles_skipped_irrelevant: 0,
     articles_needs_review: 0,
+    articles_pending_analysis: 0,
     errors: [] as string[],
   };
 
-  // Fetch all feeds in parallel (no delays needed for single project)
+  // ─── Phase 1: Fetch all feeds in parallel (fast) ────────────────────
   const feedResults = await Promise.allSettled(
     feedSources.map(async (feedSource) => {
       try {
@@ -242,7 +250,7 @@ async function runScan(projectId: string, userId: string) {
     })
   );
 
-  // Collect all articles from all feeds
+  // Collect all articles
   const allArticles: Array<{ feedId: string | null; article: RawArticle }> = [];
 
   for (const feedResult of feedResults) {
@@ -274,7 +282,18 @@ async function runScan(projectId: string, userId: string) {
 
   result.articles_found = allArticles.length;
 
-  // Process articles: dedup, classify, store, analyse
+  // ─── Phase 2: Dedup, classify, store (fast, no API calls) ──────────
+  interface StoredArticle {
+    fetchedArticleId: string;
+    text: string;
+    match_type: 'project_specific' | 'area_intelligence';
+    match_reason: string;
+    articleUrl: string;
+    articleTitle: string;
+  }
+
+  const articlesToAnalyse: StoredArticle[] = [];
+
   for (const { feedId, article } of allArticles) {
     const guid = makeGuid(article.url, article.title);
 
@@ -294,7 +313,6 @@ async function runScan(projectId: string, userId: string) {
     const { match_type, match_reason } = classifyMatch(text, project);
     const status = match_type === 'project_specific' ? 'matched' : 'unmatched';
 
-    // Insert fetched_article
     const { data: fetchedArticle, error: fetchErr } = await supabaseAdmin
       .from('fetched_articles')
       .insert({
@@ -328,18 +346,37 @@ async function runScan(projectId: string, userId: string) {
       result.articles_matched++;
     }
 
-    // Analyse article with Claude Haiku
+    articlesToAnalyse.push({
+      fetchedArticleId: fetchedArticle!.id,
+      text,
+      match_type,
+      match_reason,
+      articleUrl: article.url,
+      articleTitle: article.title,
+    });
+  }
+
+  // ─── Phase 3: Analyse with Haiku in parallel batches (time-budgeted) ──
+
+  // Prioritise project_specific matches first
+  articlesToAnalyse.sort((a, b) => {
+    if (a.match_type === 'project_specific' && b.match_type !== 'project_specific') return -1;
+    if (a.match_type !== 'project_specific' && b.match_type === 'project_specific') return 1;
+    return 0;
+  });
+
+  async function analyseOne(item: StoredArticle): Promise<void> {
     try {
-      const analysis = await analyseContent(text);
+      const analysis = await analyseContent(item.text);
       const needsReview = analysis.confidence_score < NEEDS_REVIEW_THRESHOLD;
 
       const { data: analysisItem } = await supabaseAdmin
         .from('analysis_items')
         .insert({
           project_id: projectId,
-          source_text: text,
+          source_text: item.text,
           source_type: 'news_article',
-          source_url: article.url,
+          source_url: item.articleUrl,
           summary: analysis.summary,
           sentiment: analysis.sentiment,
           alert_level: analysis.alert_level,
@@ -347,8 +384,8 @@ async function runScan(projectId: string, userId: string) {
           key_themes: analysis.key_themes,
           recommended_action: analysis.recommended_action,
           review_status: 'unreviewed',
-          match_type,
-          match_reason,
+          match_type: item.match_type,
+          match_reason: item.match_reason,
           confidence_score: analysis.confidence_score,
           needs_review: needsReview,
           created_by: userId,
@@ -356,22 +393,41 @@ async function runScan(projectId: string, userId: string) {
         .select('id')
         .single();
 
-      if (analysisItem && fetchedArticle) {
+      if (analysisItem) {
         await supabaseAdmin
           .from('fetched_articles')
           .update({ status: 'analysed', analysis_item_id: analysisItem.id })
-          .eq('id', fetchedArticle.id);
+          .eq('id', item.fetchedArticleId);
       }
 
       result.articles_analysed++;
       if (needsReview) result.articles_needs_review++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Analysis failed';
-      result.errors.push(`${article.title}: ${msg}`);
+      result.errors.push(`${item.articleTitle}: ${msg}`);
     }
   }
 
-  const message = `Scan complete. ${result.articles_fetched} new articles from ${result.articles_found} found across ${result.feeds_scanned} feeds. ${result.articles_analysed} analysed, ${result.articles_skipped_duplicate} duplicates skipped.`;
+  // Process in batches of ANALYSIS_CONCURRENCY, respecting the time budget
+  let analysisIndex = 0;
+  while (analysisIndex < articlesToAnalyse.length) {
+    const elapsed = Date.now() - scanStart;
+    if (elapsed > ANALYSIS_TIME_BUDGET_MS) {
+      // Out of time — remaining articles stay as fetched but un-analysed
+      result.articles_pending_analysis = articlesToAnalyse.length - analysisIndex;
+      break;
+    }
+
+    const batch = articlesToAnalyse.slice(analysisIndex, analysisIndex + ANALYSIS_CONCURRENCY);
+    await Promise.all(batch.map(analyseOne));
+    analysisIndex += batch.length;
+  }
+
+  const pendingNote = result.articles_pending_analysis > 0
+    ? ` ${result.articles_pending_analysis} articles saved but not yet analysed (will be analysed on next scan).`
+    : '';
+
+  const message = `Scan complete. ${result.articles_fetched} new articles from ${result.articles_found} found across ${result.feeds_scanned} feeds. ${result.articles_analysed} analysed, ${result.articles_skipped_duplicate} duplicates skipped.${pendingNote}`;
 
   return NextResponse.json({ message, ...result });
 }

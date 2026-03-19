@@ -14,6 +14,7 @@ import { SentimentTrend } from '@/components/dashboard/SentimentTrend';
 import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
+import { ProjectFeeds } from '@/components/feeds/ProjectFeeds';
 import { Pencil, FileText, BarChart3 } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
@@ -182,6 +183,11 @@ export default function ProjectDashboardPage() {
               : '\u2014'}
           </div>
         </Card>
+      </div>
+
+      {/* Feeds section */}
+      <div className="mb-6">
+        <ProjectFeeds project={project} />
       </div>
 
       {!hasData ? (

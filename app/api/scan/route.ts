@@ -36,6 +36,49 @@ function partialTerms(value: string): string[] {
   return terms;
 }
 
+/**
+ * Planning-related keywords. An article must contain at least one of these
+ * (case-insensitive) to be considered relevant enough to ingest.
+ */
+const PLANNING_KEYWORDS = [
+  'planning',
+  'development',
+  'homes',
+  'housing',
+  'application',
+  'approval',
+  'construction',
+  'demolition',
+  'council',
+  'residents',
+  'objection',
+  'consultation',
+  'proposed',
+  'permission',
+  'affordable homes',
+  'green belt',
+  'brownfield',
+  'regeneration',
+  'infrastructure',
+  'zoning',
+  'rezoning',
+  'building permit',
+  'land use',
+  'local plan',
+  'outline permission',
+  'reserved matters',
+  'section 106',
+  's106',
+  'environmental impact',
+  'listed building',
+  'conservation area',
+];
+
+function hasPlanningRelevance(text: string): boolean {
+  const lower = text.toLowerCase();
+  return PLANNING_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 function classifyMatch(
   text: string,
   project: {
@@ -135,6 +178,7 @@ export async function POST() {
     project_name: string;
     articles_found: number;
     articles_ingested: number;
+    articles_skipped_irrelevant: number;
     errors: string[];
   }> = [];
 
@@ -146,6 +190,7 @@ export async function POST() {
         project_name: `${project.client_name} – ${project.site_name}`,
         articles_found: 0,
         articles_ingested: 0,
+        articles_skipped_irrelevant: 0,
         errors: ['No search terms configured'],
       });
       continue;
@@ -156,6 +201,7 @@ export async function POST() {
       project_name: `${project.client_name} – ${project.site_name}`,
       articles_found: 0,
       articles_ingested: 0,
+      articles_skipped_irrelevant: 0,
       errors: [] as string[],
     };
 
@@ -177,6 +223,12 @@ export async function POST() {
           .join('\n\n');
 
         if (!text.trim()) continue;
+
+        // Skip articles with no planning relevance (weather, sports, etc.)
+        if (!hasPlanningRelevance(text)) {
+          projectResult.articles_skipped_irrelevant++;
+          continue;
+        }
 
         try {
           const { match_type, match_reason } = classifyMatch(text, project);

@@ -64,6 +64,7 @@ export type ItemAlertLevel = 'Routine' | 'Watch' | 'Action Required';
 
 export type SourceType =
   | 'news_article'
+  | 'rss-local'
   | 'social_media'
   | 'committee_report'
   | 'planning_document'

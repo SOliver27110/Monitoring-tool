@@ -4,7 +4,8 @@ import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { ingestFeedsForProject } from '@/lib/rssIngestion';
 
-export const maxDuration = 300;
+// Hobby plan cap — use per-project calls from the UI, not { all: true }
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const { userId } = auth();

@@ -178,6 +178,7 @@ export async function POST() {
     project_name: string;
     articles_found: number;
     articles_ingested: number;
+    articles_skipped_duplicate: number;
     articles_skipped_irrelevant: number;
     errors: string[];
   }> = [];
@@ -190,6 +191,7 @@ export async function POST() {
         project_name: `${project.client_name} – ${project.site_name}`,
         articles_found: 0,
         articles_ingested: 0,
+        articles_skipped_duplicate: 0,
         articles_skipped_irrelevant: 0,
         errors: ['No search terms configured'],
       });
@@ -201,17 +203,21 @@ export async function POST() {
       project_name: `${project.client_name} – ${project.site_name}`,
       articles_found: 0,
       articles_ingested: 0,
+      articles_skipped_duplicate: 0,
       articles_skipped_irrelevant: 0,
       errors: [] as string[],
     };
 
     try {
-      const articles = await searchArticles(query, 10);
+      const articles = await searchArticles(query, 25);
       projectResult.articles_found = articles.length;
 
       for (const article of articles) {
         // Skip duplicates
-        if (existingUrls.has(article.url)) continue;
+        if (existingUrls.has(article.url)) {
+          projectResult.articles_skipped_duplicate++;
+          continue;
+        }
 
         // Build the text content for analysis
         const text = [
@@ -270,9 +276,12 @@ export async function POST() {
   }
 
   const totalIngested = results.reduce((sum, r) => sum + r.articles_ingested, 0);
+  const totalFound = results.reduce((sum, r) => sum + r.articles_found, 0);
+  const totalDuplicates = results.reduce((sum, r) => sum + r.articles_skipped_duplicate, 0);
+  const totalIrrelevant = results.reduce((sum, r) => sum + r.articles_skipped_irrelevant, 0);
 
   return NextResponse.json({
-    message: `Scan complete. ${totalIngested} new article(s) ingested.`,
+    message: `Scan complete. ${totalIngested} new article(s) ingested from ${totalFound} found. Skipped: ${totalDuplicates} duplicate(s), ${totalIrrelevant} irrelevant.`,
     results,
   });
 }

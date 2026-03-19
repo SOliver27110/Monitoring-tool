@@ -71,6 +71,8 @@ export type SourceType =
 
 export type ReviewStatus = 'unreviewed' | 'approved' | 'dismissed';
 
+export type MatchType = 'project_specific' | 'area_intelligence';
+
 export interface AnalysisResult {
   summary: string;
   sentiment: Sentiment;
@@ -96,6 +98,8 @@ export interface AnalysisItem {
   review_status: ReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  match_type: MatchType | null;
+  match_reason: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

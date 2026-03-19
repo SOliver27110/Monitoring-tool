@@ -7,13 +7,44 @@ import { ensureUserInSupabase } from '@/lib/auth';
 
 export const maxDuration = 60;
 
+function classifyMatch(
+  text: string,
+  project: { client_name: string; site_name: string; planning_reference: string }
+): { match_type: 'project_specific' | 'area_intelligence'; match_reason: string } {
+  const lower = text.toLowerCase();
+
+  if (project.planning_reference && lower.includes(project.planning_reference.toLowerCase())) {
+    return {
+      match_type: 'project_specific',
+      match_reason: `Matched: planning reference '${project.planning_reference}'`,
+    };
+  }
+  if (project.site_name && lower.includes(project.site_name.toLowerCase())) {
+    return {
+      match_type: 'project_specific',
+      match_reason: `Matched: site name '${project.site_name}'`,
+    };
+  }
+  if (project.client_name && lower.includes(project.client_name.toLowerCase())) {
+    return {
+      match_type: 'project_specific',
+      match_reason: `Matched: client name '${project.client_name}'`,
+    };
+  }
+
+  return {
+    match_type: 'area_intelligence',
+    match_reason: 'No direct project identifiers found in article text',
+  };
+}
+
 export async function POST() {
   const userId = await ensureUserInSupabase();
 
   // Fetch all projects with boolean search terms
   const { data: projects, error: projErr } = await supabaseAdmin
     .from('projects')
-    .select('id, client_name, site_name, boolean_search_terms');
+    .select('id, client_name, site_name, planning_reference, lpa, boolean_search_terms');
 
   if (projErr) {
     return NextResponse.json({ error: projErr.message }, { status: 500 });
@@ -82,6 +113,7 @@ export async function POST() {
         if (!text.trim()) continue;
 
         try {
+          const { match_type, match_reason } = classifyMatch(text, project);
           const analysis = await analyseContent(text);
 
           await supabaseAdmin.from('analysis_items').insert({
@@ -96,6 +128,8 @@ export async function POST() {
             key_themes: analysis.key_themes,
             recommended_action: analysis.recommended_action,
             review_status: 'unreviewed',
+            match_type,
+            match_reason,
             created_by: userId,
           });
 

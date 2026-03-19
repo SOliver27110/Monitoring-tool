@@ -91,6 +91,8 @@ export interface Database {
           review_status: string;
           reviewed_by: string | null;
           reviewed_at: string | null;
+          match_type: string | null;
+          match_reason: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -110,6 +112,8 @@ export interface Database {
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
+          match_type?: string | null;
+          match_reason?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -121,6 +125,8 @@ export interface Database {
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
+          match_type?: string | null;
+          match_reason?: string | null;
           updated_at?: string;
         };
         Relationships: [];

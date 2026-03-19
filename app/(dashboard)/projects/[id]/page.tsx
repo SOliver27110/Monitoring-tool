@@ -126,6 +126,8 @@ export default function ProjectDashboardPage() {
   const { trend, thisWeekPct, lastWeekPct } = calculateSentimentTrend(thisWeekItems, lastWeekItems);
   const voices = aggregateVoices(thisWeekItems);
   const actionItems = thisWeekItems.filter((i) => i.alert_level === 'Action Required');
+  const projectSpecificItems = thisWeekItems.filter((i) => i.match_type === 'project_specific');
+  const areaIntelItems = thisWeekItems.filter((i) => i.match_type !== 'project_specific');
   const hasData = allItems.length > 0;
 
   return (
@@ -206,19 +208,54 @@ export default function ProjectDashboardPage() {
             <NotableVoices voices={voices} />
           </div>
 
-          {/* Recent items */}
+          {/* Project-specific coverage */}
           <Card>
             <CardHeader
-              title="All Mentions This Week"
-              description={`${thisWeekItems.length} item${thisWeekItems.length !== 1 ? 's' : ''} this week`}
+              title="Project Coverage This Week"
+              description={`${projectSpecificItems.length} item${projectSpecificItems.length !== 1 ? 's' : ''} directly mentioning this project`}
             />
-            {thisWeekItems.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">No items this week</p>
+            {projectSpecificItems.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4">No project-specific mentions this week</p>
             ) : (
               <div className="space-y-3">
-                {thisWeekItems.map((item) => (
+                {projectSpecificItems.map((item) => (
                   <div key={item.id} className="rounded-lg border border-gray-100 p-3">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <Badge variant="info">Project</Badge>
+                      <Badge
+                        variant={
+                          item.sentiment === 'Supportive' ? 'success' :
+                          item.sentiment === 'Opposed' ? 'danger' :
+                          item.sentiment === 'Mixed' ? 'warning' : 'default'
+                        }
+                      >
+                        {item.sentiment}
+                      </Badge>
+                      <span className="text-xs text-gray-400">
+                        {new Date(item.created_at).toLocaleDateString('en-GB')}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-900">{item.summary}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Area intelligence */}
+          <Card>
+            <CardHeader
+              title="Area Intelligence This Week"
+              description={`${areaIntelItems.length} item${areaIntelItems.length !== 1 ? 's' : ''} from the wider area`}
+            />
+            {areaIntelItems.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4">No area intelligence this week</p>
+            ) : (
+              <div className="space-y-3">
+                {areaIntelItems.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-gray-100 p-3">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <Badge variant="default">Area Intel</Badge>
                       <Badge
                         variant={
                           item.sentiment === 'Supportive' ? 'success' :

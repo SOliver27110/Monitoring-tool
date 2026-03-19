@@ -45,6 +45,11 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
                 {item.project.client_name}
               </Badge>
             )}
+            {item.match_type && (
+              <Badge variant={item.match_type === 'project_specific' ? 'info' : 'default'}>
+                {item.match_type === 'project_specific' ? 'Project' : 'Area Intel'}
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
           <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>

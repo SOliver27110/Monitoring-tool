@@ -27,11 +27,16 @@ export async function POST(req: NextRequest) {
   // items get analysed first, and .limit(3) to keep each call well under 60s.
   const { data: items, error: fetchError } = await supabaseAdmin
     .from('analysis_items')
-    .select('id, source_text')
+    .select('id, source_text, review_status')
     .eq('project_id', projectId)
     .eq('review_status', 'pending_analysis')
     .order('created_at', { ascending: true })
     .limit(3);
+
+  console.log(`[analyse-pending] project_id=${projectId} query returned ${items?.length ?? 0} rows, fetchError=${fetchError?.message ?? 'none'}`);
+  if (items && items.length > 0) {
+    console.log(`[analyse-pending] first row id=${items[0].id}, review_status=${items[0].review_status}`);
+  }
 
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 500 });

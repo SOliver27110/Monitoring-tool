@@ -1,7 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnalysisResult } from '@/lib/types';
 
-const SYSTEM_PROMPT = `You are a media monitoring analyst for a UK planning consultancy. Analyse the following content and return a JSON object with these fields: summary (2-3 sentences), sentiment (Supportive / Neutral / Opposed / Mixed), alert_level (Routine / Watch / Action Required), notable_voices (array of any elected members, journalists, parish councils, amenity groups mentioned), key_themes (array), recommended_action (1-2 sentences). Apply Action Required for: organised opposition, elected members publicly opposing, factual errors in media, viral content, committee call-ins.
+const SYSTEM_PROMPT = `You are a media monitoring analyst for a UK planning consultancy. Analyse the following content and return a JSON object with these fields: summary (2-3 sentences), sentiment (Supportive / Neutral / Opposed / Mixed), alert_level (Routine / Watch / Action Required), notable_voices (array of any elected members, journalists, parish councils, amenity groups mentioned), key_themes (array), recommended_action (1-2 sentences), relevant (boolean). Apply Action Required for: organised opposition, elected members publicly opposing, factual errors in media, viral content, committee call-ins.
+
+Set relevant: true if the content has a meaningful connection to a UK planning application or development project. Set relevant: false if the content is unrelated (e.g. travel, tourism, lifestyle, sport) even if it mentions a place name that happens to match a project location.
 
 Return ONLY valid JSON, no markdown fences or additional text.`;
 
@@ -61,5 +63,6 @@ export async function analyseContent(text: string): Promise<AnalysisResult> {
     notable_voices: Array.isArray(parsed.notable_voices) ? parsed.notable_voices : [],
     key_themes: Array.isArray(parsed.key_themes) ? parsed.key_themes : [],
     recommended_action: parsed.recommended_action,
+    relevant: parsed.relevant !== false,
   };
 }

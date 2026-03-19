@@ -79,6 +79,7 @@ export interface AnalysisResult {
   notable_voices: string[];
   key_themes: string[];
   recommended_action: string;
+  relevant: boolean;
 }
 
 export interface AnalysisItem {

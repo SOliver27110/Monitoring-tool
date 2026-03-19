@@ -17,61 +17,74 @@ interface ProjectInput {
   planning_reference: string | null;
 }
 
+/** Words stripped from site names before matching — too generic to be useful. */
+const GENERIC_SITE_WORDS = new Set([
+  'road', 'street', 'lane', 'way', 'close', 'drive', 'avenue',
+  'land', 'north', 'south', 'east', 'west',
+  'at', 'the', 'of', 'off', 'near',
+  'site', 'plot', 'phase', 'former', 'proposed',
+]);
+
+/** Planning-context keywords — at least one must appear for Condition B. */
+const PLANNING_KEYWORDS = [
+  'planning', 'development', 'application', 'permission', 'consent',
+  'housing', 'homes', 'proposal', 'appeal', 'committee',
+  'councillor', 'objection', 'consultation', 'developer',
+  'housebuilder', 'residents', 'approved', 'refused', 'allocated',
+];
+
 /**
- * Extract individual search terms from a boolean search string.
- * Strips AND / OR / NOT operators and surrounding quotes,
- * then returns lowercased terms suitable for substring matching.
+ * Build the list of specific project terms used for Condition A.
+ * Includes: planning reference, client name, and meaningful site-name parts
+ * (generic words like "road", "street" etc. are stripped).
  */
-function extractMatchTerms(project: ProjectInput): string[] {
+function extractSpecificTerms(project: ProjectInput): string[] {
   const terms: string[] = [];
 
-  // Parse boolean_search_terms: strip operators, extract quoted phrases and bare words
-  const raw = project.boolean_search_terms;
-  if (raw) {
-    // Extract quoted phrases first
-    const quoted = raw.match(/"([^"]+)"/g);
-    if (quoted) {
-      for (const q of quoted) {
-        terms.push(q.replace(/"/g, ''));
-      }
-    }
-    // Then get remaining tokens after removing quoted parts and boolean operators
-    const stripped = raw
-      .replace(/"[^"]+"/g, '')
-      .replace(/\b(AND|OR|NOT)\b/gi, '')
-      .trim();
-    for (const token of stripped.split(/\s+/)) {
-      if (token.length > 2) {
-        terms.push(token);
+  if (project.planning_reference) {
+    terms.push(project.planning_reference.toLowerCase().trim());
+  }
+
+  if (project.client_name) {
+    terms.push(project.client_name.toLowerCase().trim());
+  }
+
+  if (project.site_name) {
+    const parts = project.site_name.toLowerCase().split(/\s+/);
+    for (const part of parts) {
+      const cleaned = part.replace(/[^a-z0-9]/g, '');
+      if (cleaned.length > 2 && !GENERIC_SITE_WORDS.has(cleaned)) {
+        terms.push(cleaned);
       }
     }
   }
 
-  // Always include project identifiers as match terms
-  if (project.client_name) terms.push(project.client_name);
-  if (project.site_name) terms.push(project.site_name);
-  if (project.planning_reference) terms.push(project.planning_reference);
-
-  // Deduplicate and lowercase
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const t of terms) {
-    const lower = t.toLowerCase().trim();
-    if (lower && !seen.has(lower)) {
-      seen.add(lower);
-      result.push(lower);
-    }
-  }
-  return result;
+  // Deduplicate
+  return [...new Set(terms)];
 }
 
+/**
+ * Two-part relevance test. An article passes only when BOTH conditions hold:
+ *   A) Contains a specific project term (planning ref, client name, or
+ *      meaningful site-name part).
+ *   B) Contains at least one planning-context keyword.
+ *
+ * The LPA city name alone is never sufficient.
+ */
 function isRelevant(
   title: string,
   description: string,
-  matchTerms: string[]
+  specificTerms: string[]
 ): boolean {
   const haystack = `${title} ${description}`.toLowerCase();
-  return matchTerms.some((term) => haystack.includes(term));
+
+  // Condition A — specific project term match
+  const hasSpecificTerm = specificTerms.some((term) => haystack.includes(term));
+  if (!hasSpecificTerm) return false;
+
+  // Condition B — planning context present
+  const hasPlanningContext = PLANNING_KEYWORDS.some((kw) => haystack.includes(kw));
+  return hasPlanningContext;
 }
 
 /**
@@ -84,7 +97,7 @@ export async function ingestFeedsForProject(
   createdBy = 'system'
 ): Promise<{ ingested: number; skipped: number; errors: string[] }> {
   const feeds = getFeedsForLpa(project.lpa);
-  const matchTerms = extractMatchTerms(project);
+  const specificTerms = extractSpecificTerms(project);
   let ingested = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -131,7 +144,7 @@ export async function ingestFeedsForProject(
         continue;
       }
 
-      if (!isRelevant(title, description, matchTerms)) {
+      if (!isRelevant(title, description, specificTerms)) {
         skipped++;
         continue;
       }

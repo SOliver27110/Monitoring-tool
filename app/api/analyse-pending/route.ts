@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
     try {
       const analysis = await analyseContent(item.source_text);
 
+      // If the AI judged the content as irrelevant to planning, mark it
+      // as analysis_failed so it doesn't surface in the review queue.
+      const status = analysis.relevant === false ? 'analysis_failed' : 'unreviewed';
+
       const { error: updateError } = await supabaseAdmin
         .from('analysis_items')
         .update({
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
           notable_voices: analysis.notable_voices,
           key_themes: analysis.key_themes,
           recommended_action: analysis.recommended_action,
-          review_status: 'unreviewed',
+          review_status: status,
         })
         .eq('id', item.id)
         .eq('review_status', 'pending_analysis'); // guard against concurrent updates

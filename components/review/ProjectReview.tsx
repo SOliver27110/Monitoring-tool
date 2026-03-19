@@ -97,7 +97,8 @@ export function ProjectReview({ projectId, onArticlesChanged }: ProjectReviewPro
 
   async function handleBulkAction(action: 'approve' | 'dismiss') {
     setBulkProcessing(true);
-    let count = 0;
+    const total = articles.length;
+    let succeeded = 0;
 
     for (const article of articles) {
       try {
@@ -109,18 +110,25 @@ export function ProjectReview({ projectId, onArticlesChanged }: ProjectReviewPro
             body: JSON.stringify({ action }),
           }
         );
-        if (res.ok) count++;
+        if (res.ok) succeeded++;
       } catch {
-        // continue
+        // continue to next article
       }
+    }
+
+    const failed = total - succeeded;
+    const verb = action === 'approve' ? 'approved' : 'dismissed';
+
+    if (failed > 0 && succeeded > 0) {
+      showToast(`${succeeded} ${verb}, ${failed} failed`, 'warning');
+    } else if (failed > 0 && succeeded === 0) {
+      showToast(`Failed to ${action} articles`, 'error');
+    } else {
+      showToast(`${succeeded} article${succeeded !== 1 ? 's' : ''} ${verb}`, 'success');
     }
 
     setArticles([]);
     setBulkProcessing(false);
-    showToast(
-      `${count} article${count !== 1 ? 's' : ''} ${action === 'approve' ? 'approved' : 'dismissed'}`,
-      'success'
-    );
     onArticlesChanged?.();
   }
 
@@ -278,6 +286,7 @@ export function ProjectReview({ projectId, onArticlesChanged }: ProjectReviewPro
                               size="sm"
                               onClick={() => handleAction(article.id, 'approve')}
                               title="Approve — analyse and add to dashboard"
+                              aria-label="Approve article"
                               className="text-green-600 hover:text-green-700 hover:bg-green-50"
                             >
                               <Check className="h-4 w-4" />
@@ -287,6 +296,7 @@ export function ProjectReview({ projectId, onArticlesChanged }: ProjectReviewPro
                               size="sm"
                               onClick={() => handleAction(article.id, 'dismiss')}
                               title="Dismiss — hide this article"
+                              aria-label="Dismiss article"
                               className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
                               <X className="h-4 w-4" />

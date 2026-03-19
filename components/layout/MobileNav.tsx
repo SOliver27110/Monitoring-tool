@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { X, FolderKanban, FileSearch, Inbox, FileText, LayoutDashboard, Rss } from 'lucide-react';
+import { X, FolderKanban, FileSearch, FileText, LayoutDashboard } from 'lucide-react';
 
 interface MobileNavProps {
   open: boolean;
@@ -11,9 +11,7 @@ interface MobileNavProps {
 
 const navItems = [
   { href: '/projects', label: 'Projects', icon: <FolderKanban className="h-5 w-5" /> },
-  { href: '/feeds', label: 'Feeds', icon: <Rss className="h-5 w-5" /> },
   { href: '/analyse', label: 'Analyse', icon: <FileSearch className="h-5 w-5" /> },
-  { href: '/queue', label: 'Review Queue', icon: <Inbox className="h-5 w-5" /> },
   { href: '/reports', label: 'Reports', icon: <FileText className="h-5 w-5" /> },
 ];
 
@@ -33,6 +31,7 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close menu"
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           >
             <X className="h-5 w-5" />

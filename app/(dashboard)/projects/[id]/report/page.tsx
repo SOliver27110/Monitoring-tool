@@ -37,7 +37,9 @@ export default function ProjectReportPage() {
         setProject(proj);
         setReports(Array.isArray(reps) ? reps : []);
       })
-      .catch(() => {})
+      .catch(() => {
+        showToast('Failed to load report data', 'error');
+      })
       .finally(() => setLoading(false));
   }, [projectId]);
 
@@ -67,7 +69,7 @@ export default function ProjectReportPage() {
   }
 
   function openMailto(report: Report) {
-    const content = report.report_content as unknown as ReportContent;
+    const content = report.report_content as ReportContent;
     const subject = encodeURIComponent(
       `Weekly Media Report: ${content.client_name} — ${content.site_name} (${new Date(report.week_end).toLocaleDateString('en-GB')})`
     );
@@ -128,7 +130,7 @@ export default function ProjectReportPage() {
                 <h2 className="text-lg font-semibold text-gray-900">Latest Report</h2>
                 <div className="flex items-center gap-2">
                   <DownloadPDFButton
-                    content={latestReport.report_content as unknown as ReportContent}
+                    content={latestReport.report_content as ReportContent}
                     generatedAt={latestReport.locked_at}
                     weekStart={latestReport.week_start}
                     weekEnd={latestReport.week_end}
@@ -148,7 +150,7 @@ export default function ProjectReportPage() {
                 Step 1: Download the PDF. Step 2: Click Email to open your mail client with a pre-filled subject line, then attach the downloaded file.
               </p>
               <ReportPreview
-                content={latestReport.report_content as unknown as ReportContent}
+                content={latestReport.report_content as ReportContent}
                 generatedAt={latestReport.locked_at}
               />
             </div>

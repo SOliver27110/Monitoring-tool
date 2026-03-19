@@ -7,12 +7,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
 import { ProjectAlertBadge } from '@/components/ui/AlertBadge';
+import { useToast } from '@/components/ui/Toast';
 import { FileText } from 'lucide-react';
 import type { Report, AlertLevel } from '@/lib/types';
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetch('/api/reports')
@@ -20,7 +22,9 @@ export default function ReportsPage() {
       .then((data) => {
         if (Array.isArray(data)) setReports(data);
       })
-      .catch(() => {})
+      .catch(() => {
+        showToast('Failed to load reports', 'error');
+      })
       .finally(() => setLoading(false));
   }, []);
 

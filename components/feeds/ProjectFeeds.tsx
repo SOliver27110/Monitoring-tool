@@ -426,7 +426,8 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
                 <button
                   onClick={() => toggleFeed(feed)}
                   className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  title={feed.is_active ? 'Pause' : 'Enable'}
+                  title={feed.is_active ? 'Pause feed' : 'Enable feed'}
+                  aria-label={feed.is_active ? 'Pause feed' : 'Enable feed'}
                 >
                   {feed.is_active ? (
                     <ToggleRight className="h-4 w-4 text-green-500" />
@@ -437,7 +438,8 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
                 <button
                   onClick={() => deleteFeed(feed.id)}
                   className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                  title="Delete"
+                  title="Delete feed"
+                  aria-label="Delete feed"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

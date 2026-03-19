@@ -62,11 +62,15 @@ export async function analyseContent(text: string): Promise<AnalysisResult> {
     .map((block) => block.text)
     .join('');
 
+  // Strip markdown fences if model wraps response in ```json ... ```
+  const cleaned = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
   let parsed: AnalysisResult;
   try {
-    parsed = JSON.parse(responseText) as AnalysisResult;
+    parsed = JSON.parse(cleaned) as AnalysisResult;
   } catch {
-    throw new Error('Analysis failed — please try again.');
+    console.error('[analyseContent] Failed to parse response:', responseText.slice(0, 500));
+    throw new Error('Analysis returned invalid JSON — please try again.');
   }
 
   if (
@@ -117,7 +121,9 @@ export async function generateReportContent(
     .map((block) => block.text)
     .join('');
 
-  const parsed = JSON.parse(responseText) as {
+  const cleanedReport = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+  const parsed = JSON.parse(cleanedReport) as {
     key_developments: string;
     items_requiring_action: string;
     sources_reviewed: string[];

@@ -66,7 +66,14 @@ export async function POST(
   }
 
   // Approve: analyse with Haiku then create analysis_item
-  const text = [article.title, article.excerpt].filter(Boolean).join('\n\n');
+  const text = [article.title, article.excerpt].filter(Boolean).join('\n\n').trim();
+
+  if (!text) {
+    return NextResponse.json(
+      { error: 'Article has no content to analyse' },
+      { status: 400 }
+    );
+  }
 
   try {
     const analysis = await analyseContent(text);
@@ -117,6 +124,7 @@ export async function POST(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Analysis failed';
+    console.error(`[analyse] Article ${articleId} failed:`, message);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

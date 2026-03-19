@@ -10,12 +10,21 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { Rss, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
-import type { Feed, FeedFormData, Project } from '@/lib/types';
+import type { Feed, FeedFormData, FeedType, Project } from '@/lib/types';
 
-const FEED_TYPES = [
+const FEED_TYPES: { value: FeedType; label: string }[] = [
   { value: 'google_news', label: 'Google News Search' },
-  { value: 'rss_direct', label: 'Direct RSS Feed' },
+  { value: 'local_news', label: 'Local News RSS' },
+  { value: 'planning_press', label: 'Planning Press RSS' },
+  { value: 'council', label: 'Council Feed' },
 ];
+
+const feedTypeLabels: Record<FeedType, string> = {
+  google_news: 'Google News',
+  local_news: 'Local News',
+  planning_press: 'Planning Press',
+  council: 'Council',
+};
 
 export default function FeedsPage() {
   const { showToast } = useToast();
@@ -29,8 +38,7 @@ export default function FeedsPage() {
     project_id: '',
     name: '',
     feed_type: 'google_news',
-    feed_url: '',
-    enabled: true,
+    url: '',
   });
 
   async function loadData() {
@@ -72,7 +80,7 @@ export default function FeedsPage() {
 
       showToast('Feed added', 'success');
       setShowForm(false);
-      setForm({ project_id: '', name: '', feed_type: 'google_news', feed_url: '', enabled: true });
+      setForm({ project_id: '', name: '', feed_type: 'google_news', url: '' });
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create feed';
@@ -87,13 +95,13 @@ export default function FeedsPage() {
       const res = await fetch(`/api/feeds/${feed.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !feed.enabled }),
+        body: JSON.stringify({ is_active: !feed.is_active }),
       });
 
       if (!res.ok) throw new Error('Failed to update feed');
 
       setFeeds((prev) =>
-        prev.map((f) => (f.id === feed.id ? { ...f, enabled: !f.enabled } : f))
+        prev.map((f) => (f.id === feed.id ? { ...f, is_active: !f.is_active } : f))
       );
     } catch {
       showToast('Failed to toggle feed', 'error');
@@ -121,6 +129,13 @@ export default function FeedsPage() {
     value: p.id,
     label: `${p.client_name} – ${p.site_name}`,
   }));
+
+  const urlPlaceholders: Record<FeedType, string> = {
+    google_news: 'e.g. "Oak Lane" OR "Acme Developments" planning',
+    local_news: 'e.g. https://www.localnews.co.uk/rss',
+    planning_press: 'e.g. https://www.planningresource.co.uk/rss',
+    council: 'e.g. https://council.gov.uk/planning/feed',
+  };
 
   if (loading) {
     return (
@@ -166,7 +181,7 @@ export default function FeedsPage() {
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    feed_type: e.target.value as 'google_news' | 'rss_direct',
+                    feed_type: e.target.value as FeedType,
                   }))
                 }
               />
@@ -182,13 +197,9 @@ export default function FeedsPage() {
                 id="feed_url"
                 label={form.feed_type === 'google_news' ? 'Search Query' : 'RSS Feed URL'}
                 required
-                value={form.feed_url}
-                onChange={(e) => setForm((prev) => ({ ...prev, feed_url: e.target.value }))}
-                placeholder={
-                  form.feed_type === 'google_news'
-                    ? 'e.g. "Oak Lane" OR "Acme Developments" planning'
-                    : 'e.g. https://example.com/rss'
-                }
+                value={form.url}
+                onChange={(e) => setForm((prev) => ({ ...prev, url: e.target.value }))}
+                placeholder={urlPlaceholders[form.feed_type]}
               />
             </div>
             <div className="flex items-center gap-3">
@@ -221,16 +232,16 @@ export default function FeedsPage() {
                     <span className="font-medium text-gray-900 truncate">
                       {feed.name}
                     </span>
-                    <Badge variant={feed.feed_type === 'google_news' ? 'info' : 'purple'}>
-                      {feed.feed_type === 'google_news' ? 'Google News' : 'RSS'}
+                    <Badge variant="info">
+                      {feedTypeLabels[feed.feed_type] ?? feed.feed_type}
                     </Badge>
-                    <Badge variant={feed.enabled ? 'success' : 'default'}>
-                      {feed.enabled ? 'Active' : 'Paused'}
+                    <Badge variant={feed.is_active ? 'success' : 'default'}>
+                      {feed.is_active ? 'Active' : 'Paused'}
                     </Badge>
                   </div>
                   <p className="text-sm text-gray-500 truncate">{getProjectName(feed.project_id)}</p>
                   <p className="text-xs text-gray-400 mt-1 truncate">
-                    {feed.feed_type === 'google_news' ? 'Query' : 'URL'}: {feed.feed_url}
+                    {feed.feed_type === 'google_news' ? 'Query' : 'URL'}: {feed.url}
                   </p>
                   {feed.last_fetched_at && (
                     <p className="text-xs text-gray-400 mt-0.5">
@@ -242,9 +253,9 @@ export default function FeedsPage() {
                   <button
                     onClick={() => toggleFeed(feed)}
                     className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    title={feed.enabled ? 'Pause feed' : 'Enable feed'}
+                    title={feed.is_active ? 'Pause feed' : 'Enable feed'}
                   >
-                    {feed.enabled ? (
+                    {feed.is_active ? (
                       <ToggleRight className="h-5 w-5 text-green-500" />
                     ) : (
                       <ToggleLeft className="h-5 w-5" />

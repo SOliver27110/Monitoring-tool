@@ -34,8 +34,8 @@ export async function PATCH(
 
   if (body.name !== undefined) updates.name = body.name;
   if (body.feed_type !== undefined) updates.feed_type = body.feed_type;
-  if (body.feed_url !== undefined) updates.feed_url = body.feed_url;
-  if (body.enabled !== undefined) updates.enabled = body.enabled;
+  if (body.url !== undefined) updates.url = body.url;
+  if (body.is_active !== undefined) updates.is_active = body.is_active;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

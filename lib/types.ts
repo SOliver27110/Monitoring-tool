@@ -138,26 +138,42 @@ export interface ReportContent {
   sources_reviewed: string[];
 }
 
-export type FeedType = 'google_news' | 'rss_direct';
+export type FeedType = 'google_news' | 'local_news' | 'planning_press' | 'council';
 
 export interface Feed {
   id: string;
   project_id: string;
   name: string;
+  url: string;
   feed_type: FeedType;
-  feed_url: string;
-  enabled: boolean;
+  is_active: boolean;
   last_fetched_at: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface FeedFormData {
   project_id: string;
   name: string;
+  url: string;
   feed_type: FeedType;
-  feed_url: string;
-  enabled: boolean;
+}
+
+export type FetchedArticleStatus = 'pending' | 'matched' | 'unmatched' | 'analysed' | 'dismissed';
+
+export interface FetchedArticle {
+  id: string;
+  feed_id: string | null;
+  project_id: string | null;
+  title: string;
+  excerpt: string | null;
+  url: string | null;
+  source_name: string | null;
+  published_at: string | null;
+  guid: string;
+  matched_by: string | null;
+  status: FetchedArticleStatus;
+  analysis_item_id: string | null;
+  created_at: string;
 }
 
 export interface ApiError {

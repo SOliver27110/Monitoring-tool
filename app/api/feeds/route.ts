@@ -31,11 +31,11 @@ export async function POST(req: NextRequest) {
   await ensureUserInSupabase();
 
   const body = await req.json();
-  const { project_id, name, feed_type, feed_url, enabled } = body;
+  const { project_id, name, feed_type, url } = body;
 
-  if (!project_id || !name || !feed_url) {
+  if (!project_id || !name || !url || !feed_type) {
     return NextResponse.json(
-      { error: 'project_id, name, and feed_url are required' },
+      { error: 'project_id, name, feed_type, and url are required' },
       { status: 400 }
     );
   }
@@ -45,9 +45,8 @@ export async function POST(req: NextRequest) {
     .insert({
       project_id,
       name,
-      feed_type: feed_type || 'google_news',
-      feed_url,
-      enabled: enabled ?? true,
+      feed_type,
+      url,
     })
     .select()
     .single();

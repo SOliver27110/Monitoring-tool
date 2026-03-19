@@ -4,6 +4,7 @@ import { searchArticles } from '@/lib/google-news-rss';
 import { analyseContent, NEEDS_REVIEW_THRESHOLD } from '@/lib/anthropic';
 import { ensureUserInSupabase } from '@/lib/auth';
 import Parser from 'rss-parser';
+import { createHash } from 'crypto';
 
 export const maxDuration = 60;
 
@@ -22,9 +23,6 @@ function parseSearchTerms(booleanSearchTerms: string): string[] {
 
 /**
  * Generate partial match candidates from a field value.
- * For "David Lloyd Leisure" this produces:
- *   ["David Lloyd Leisure", "David Lloyd", "Lloyd Leisure"]
- * i.e. all contiguous sequences of 2+ words, longest first.
  */
 function partialTerms(value: string): string[] {
   const words = value.trim().split(/\s+/);
@@ -38,10 +36,6 @@ function partialTerms(value: string): string[] {
   return terms;
 }
 
-/**
- * Planning-related keywords. An article must contain at least one of these
- * (case-insensitive) to be considered relevant enough to ingest.
- */
 const PLANNING_KEYWORDS = [
   'planning',
   'development',
@@ -92,7 +86,6 @@ function classifyMatch(
 ): { match_type: 'project_specific' | 'area_intelligence'; match_reason: string } {
   const lower = text.toLowerCase();
 
-  // --- 1. Primary: match on individual boolean search terms ---
   if (project.boolean_search_terms) {
     const terms = parseSearchTerms(project.boolean_search_terms);
     for (const term of terms) {
@@ -105,7 +98,6 @@ function classifyMatch(
     }
   }
 
-  // --- 2. Exact match on project identifiers ---
   if (project.planning_reference && lower.includes(project.planning_reference.toLowerCase())) {
     return {
       match_type: 'project_specific',
@@ -125,7 +117,6 @@ function classifyMatch(
     };
   }
 
-  // --- 3. Partial match on project identifiers (2+ consecutive words) ---
   for (const term of partialTerms(project.site_name ?? '')) {
     if (lower.includes(term.toLowerCase())) {
       return {
@@ -149,11 +140,18 @@ function classifyMatch(
   };
 }
 
-interface ArticleItem {
+/** Generate a stable GUID for deduplication */
+function makeGuid(url: string, title: string): string {
+  if (url) return url;
+  return createHash('sha256').update(title).digest('hex').slice(0, 64);
+}
+
+interface RawArticle {
   title: string;
-  description: string | null;
-  content: string | null;
+  excerpt: string | null;
   url: string;
+  source_name: string;
+  published_at: string | null;
 }
 
 /**
@@ -162,28 +160,29 @@ interface ArticleItem {
 async function fetchFeedArticles(
   feedType: string,
   feedUrl: string
-): Promise<ArticleItem[]> {
+): Promise<RawArticle[]> {
   if (feedType === 'google_news') {
-    // feedUrl is the search query for Google News
     const articles = await searchArticles(feedUrl, 25);
     return articles.map((a) => ({
       title: a.title,
-      description: a.description,
-      content: a.content,
+      excerpt: a.description,
       url: a.url,
+      source_name: a.source.name,
+      published_at: a.publishedAt,
     }));
   }
 
-  // rss_direct — parse the URL directly
+  // All other types (local_news, planning_press, council) are direct RSS
   try {
     const feed = await rssParser.parseURL(feedUrl);
     return (feed.items ?? []).slice(0, 25).map((item) => {
       const snippet = item.contentSnippet || item.content || null;
       return {
         title: item.title ?? '',
-        description: snippet ? snippet.slice(0, 500) : null,
-        content: snippet ? snippet.slice(0, 500) : null,
+        excerpt: snippet ? snippet.slice(0, 500) : null,
         url: item.link ?? '',
+        source_name: feed.title ?? 'RSS Feed',
+        published_at: item.pubDate ?? null,
       };
     });
   } catch (err) {
@@ -195,7 +194,7 @@ async function fetchFeedArticles(
 export async function POST() {
   const userId = await ensureUserInSupabase();
 
-  // Fetch all projects with their feeds
+  // Fetch all projects
   const { data: projects, error: projErr } = await supabaseAdmin
     .from('projects')
     .select('id, client_name, site_name, planning_reference, lpa, boolean_search_terms');
@@ -208,12 +207,12 @@ export async function POST() {
     return NextResponse.json({ message: 'No projects to scan', results: [] });
   }
 
-  // Fetch all enabled feeds
+  // Fetch all active feeds
   const { data: allFeeds } = await supabaseAdmin
     .from('feeds')
-    .select('id, project_id, name, feed_type, feed_url, enabled');
+    .select('id, project_id, name, feed_type, url, is_active');
 
-  const feeds = (allFeeds ?? []).filter((f) => f.enabled);
+  const feeds = (allFeeds ?? []).filter((f) => f.is_active);
 
   // Build a map of project_id -> feeds
   const feedsByProject = new Map<string, typeof feeds>();
@@ -223,14 +222,13 @@ export async function POST() {
     feedsByProject.set(feed.project_id, existing);
   }
 
-  // Get existing source URLs to avoid duplicates
-  const { data: existingItems } = await supabaseAdmin
-    .from('analysis_items')
-    .select('source_url')
-    .not('source_url', 'is', null);
+  // Get existing GUIDs to avoid duplicates
+  const { data: existingArticles } = await supabaseAdmin
+    .from('fetched_articles')
+    .select('guid');
 
-  const existingUrls = new Set(
-    (existingItems ?? []).map((i) => i.source_url).filter(Boolean)
+  const existingGuids = new Set(
+    (existingArticles ?? []).map((a) => a.guid)
   );
 
   const results: Array<{
@@ -238,7 +236,9 @@ export async function POST() {
     project_name: string;
     feeds_scanned: number;
     articles_found: number;
-    articles_ingested: number;
+    articles_fetched: number;
+    articles_matched: number;
+    articles_analysed: number;
     articles_skipped_duplicate: number;
     articles_skipped_irrelevant: number;
     articles_needs_review: number;
@@ -250,9 +250,9 @@ export async function POST() {
 
     // Fallback: if no feeds configured, use boolean_search_terms as a Google News search
     const feedSources = projectFeeds && projectFeeds.length > 0
-      ? projectFeeds.map((f) => ({ type: f.feed_type, url: f.feed_url, id: f.id }))
+      ? projectFeeds.map((f) => ({ type: f.feed_type, url: f.url, id: f.id }))
       : project.boolean_search_terms
-        ? [{ type: 'google_news', url: project.boolean_search_terms, id: null }]
+        ? [{ type: 'google_news', url: project.boolean_search_terms, id: null as string | null }]
         : [];
 
     if (feedSources.length === 0) {
@@ -261,7 +261,9 @@ export async function POST() {
         project_name: `${project.client_name} – ${project.site_name}`,
         feeds_scanned: 0,
         articles_found: 0,
-        articles_ingested: 0,
+        articles_fetched: 0,
+        articles_matched: 0,
+        articles_analysed: 0,
         articles_skipped_duplicate: 0,
         articles_skipped_irrelevant: 0,
         articles_needs_review: 0,
@@ -275,7 +277,9 @@ export async function POST() {
       project_name: `${project.client_name} – ${project.site_name}`,
       feeds_scanned: feedSources.length,
       articles_found: 0,
-      articles_ingested: 0,
+      articles_fetched: 0,
+      articles_matched: 0,
+      articles_analysed: 0,
       articles_skipped_duplicate: 0,
       articles_skipped_irrelevant: 0,
       articles_needs_review: 0,
@@ -284,21 +288,20 @@ export async function POST() {
 
     for (const feedSource of feedSources) {
       try {
-        const articles = await fetchFeedArticles(feedSource.type, feedSource.url);
-        projectResult.articles_found += articles.length;
+        const rawArticles = await fetchFeedArticles(feedSource.type, feedSource.url);
+        projectResult.articles_found += rawArticles.length;
 
-        for (const article of articles) {
+        for (const article of rawArticles) {
+          const guid = makeGuid(article.url, article.title);
+
           // Skip duplicates
-          if (existingUrls.has(article.url)) {
+          if (existingGuids.has(guid)) {
             projectResult.articles_skipped_duplicate++;
             continue;
           }
 
-          // Build text content for analysis
-          const text = [article.title, article.description, article.content]
-            .filter(Boolean)
-            .join('\n\n');
-
+          // Build text for relevance check
+          const text = [article.title, article.excerpt].filter(Boolean).join('\n\n');
           if (!text.trim()) continue;
 
           // Skip articles with no planning relevance
@@ -307,33 +310,85 @@ export async function POST() {
             continue;
           }
 
-          try {
-            const { match_type, match_reason } = classifyMatch(text, project);
-            const analysis = await analyseContent(text);
+          // Classify match
+          const { match_type, match_reason } = classifyMatch(text, project);
+          const status = match_type === 'project_specific' ? 'matched' : 'unmatched';
 
+          // Insert into fetched_articles
+          const { data: fetchedArticle, error: fetchErr } = await supabaseAdmin
+            .from('fetched_articles')
+            .insert({
+              feed_id: feedSource.id,
+              project_id: project.id,
+              title: article.title,
+              excerpt: article.excerpt,
+              url: article.url,
+              source_name: article.source_name,
+              published_at: article.published_at,
+              guid,
+              matched_by: match_reason,
+              status,
+            })
+            .select('id')
+            .single();
+
+          if (fetchErr) {
+            // Likely a duplicate GUID race condition — skip
+            if (fetchErr.code === '23505') {
+              projectResult.articles_skipped_duplicate++;
+            } else {
+              projectResult.errors.push(`${article.title}: ${fetchErr.message}`);
+            }
+            continue;
+          }
+
+          existingGuids.add(guid);
+          projectResult.articles_fetched++;
+
+          if (match_type === 'project_specific') {
+            projectResult.articles_matched++;
+          }
+
+          // Analyse matched articles (and unmatched with planning relevance)
+          try {
+            const analysis = await analyseContent(text);
             const needsReview = analysis.confidence_score < NEEDS_REVIEW_THRESHOLD;
 
-            await supabaseAdmin.from('analysis_items').insert({
-              project_id: project.id,
-              source_text: text,
-              source_type: 'news_article',
-              source_url: article.url,
-              summary: analysis.summary,
-              sentiment: analysis.sentiment,
-              alert_level: analysis.alert_level,
-              notable_voices: analysis.notable_voices,
-              key_themes: analysis.key_themes,
-              recommended_action: analysis.recommended_action,
-              review_status: 'unreviewed',
-              match_type,
-              match_reason,
-              confidence_score: analysis.confidence_score,
-              needs_review: needsReview,
-              created_by: userId,
-            });
+            const { data: analysisItem } = await supabaseAdmin
+              .from('analysis_items')
+              .insert({
+                project_id: project.id,
+                source_text: text,
+                source_type: 'news_article',
+                source_url: article.url,
+                summary: analysis.summary,
+                sentiment: analysis.sentiment,
+                alert_level: analysis.alert_level,
+                notable_voices: analysis.notable_voices,
+                key_themes: analysis.key_themes,
+                recommended_action: analysis.recommended_action,
+                review_status: 'unreviewed',
+                match_type,
+                match_reason,
+                confidence_score: analysis.confidence_score,
+                needs_review: needsReview,
+                created_by: userId,
+              })
+              .select('id')
+              .single();
 
-            existingUrls.add(article.url);
-            projectResult.articles_ingested++;
+            // Link fetched_article to analysis_item
+            if (analysisItem && fetchedArticle) {
+              await supabaseAdmin
+                .from('fetched_articles')
+                .update({
+                  status: 'analysed',
+                  analysis_item_id: analysisItem.id,
+                })
+                .eq('id', fetchedArticle.id);
+            }
+
+            projectResult.articles_analysed++;
             if (needsReview) projectResult.articles_needs_review++;
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Analysis failed';
@@ -353,7 +408,7 @@ export async function POST() {
         projectResult.errors.push(msg);
       }
 
-      // Delay between feeds to avoid rate limiting
+      // Delay between feeds
       await new Promise((r) => setTimeout(r, 1000));
     }
 
@@ -363,14 +418,15 @@ export async function POST() {
     await new Promise((r) => setTimeout(r, 1500));
   }
 
-  const totalIngested = results.reduce((sum, r) => sum + r.articles_ingested, 0);
+  const totalAnalysed = results.reduce((sum, r) => sum + r.articles_analysed, 0);
   const totalFound = results.reduce((sum, r) => sum + r.articles_found, 0);
   const totalDuplicates = results.reduce((sum, r) => sum + r.articles_skipped_duplicate, 0);
   const totalIrrelevant = results.reduce((sum, r) => sum + r.articles_skipped_irrelevant, 0);
   const totalNeedsReview = results.reduce((sum, r) => sum + r.articles_needs_review, 0);
+  const totalFetched = results.reduce((sum, r) => sum + r.articles_fetched, 0);
 
   return NextResponse.json({
-    message: `Scan complete. ${totalIngested} new article(s) ingested from ${totalFound} found. Skipped: ${totalDuplicates} duplicate(s), ${totalIrrelevant} irrelevant. ${totalNeedsReview} flagged for review.`,
+    message: `Scan complete. ${totalFetched} articles fetched, ${totalAnalysed} analysed from ${totalFound} found. Skipped: ${totalDuplicates} duplicate(s), ${totalIrrelevant} irrelevant. ${totalNeedsReview} flagged for review.`,
     results,
   });
 }

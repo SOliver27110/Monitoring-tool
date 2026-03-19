@@ -3,7 +3,11 @@ import { getFeedsForLpa } from '@/lib/feedSources';
 import { analyseContent } from '@/lib/anthropic';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
-const parser = new Parser();
+const FEED_TIMEOUT_MS = 8_000;
+
+const parser = new Parser({
+  timeout: FEED_TIMEOUT_MS,
+});
 
 interface ProjectInput {
   id: string;
@@ -103,11 +107,20 @@ export async function ingestFeedsForProject(
     try {
       const parsed = await parser.parseURL(feed.url);
       items = parsed.items ?? [];
+      console.log(`[RSS] Feed "${feed.name}" returned ${items.length} items (before relevance filter)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Feed fetch failed';
+      if (msg.includes('timed out')) {
+        console.warn(`[RSS] Feed "${feed.name}" timed out after ${FEED_TIMEOUT_MS}ms — skipping`);
+      }
       errors.push(`[${feed.name}] ${msg}`);
       continue;
     }
+
+    // Cap articles analysed per feed to stay within Vercel Hobby 60s timeout.
+    // Raise this limit (or remove it) on Vercel Pro where the timeout is 300s.
+    const MAX_ANALYSED_PER_FEED = 5;
+    let analysedThisFeed = 0;
 
     for (const item of items) {
       const title = item.title ?? '';
@@ -125,6 +138,11 @@ export async function ingestFeedsForProject(
       }
 
       if (existingUrls.has(articleUrl)) {
+        skipped++;
+        continue;
+      }
+
+      if (analysedThisFeed >= MAX_ANALYSED_PER_FEED) {
         skipped++;
         continue;
       }
@@ -161,6 +179,7 @@ export async function ingestFeedsForProject(
 
         existingUrls.add(articleUrl);
         ingested++;
+        analysedThisFeed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Insert failed';
         errors.push(`[${feed.name}] "${title}": ${msg}`);

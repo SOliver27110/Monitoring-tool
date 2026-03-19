@@ -7,12 +7,60 @@ import { ensureUserInSupabase } from '@/lib/auth';
 
 export const maxDuration = 60;
 
+/**
+ * Parse a boolean search string (e.g. "David Lloyd OR Bedford Oasis OR 24/01234")
+ * into individual search terms, stripping surrounding quotes.
+ */
+function parseSearchTerms(booleanSearchTerms: string): string[] {
+  return booleanSearchTerms
+    .split(/\s+OR\s+/i)
+    .map((t) => t.trim().replace(/^["']|["']$/g, ''))
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Generate partial match candidates from a field value.
+ * For "David Lloyd Leisure" this produces:
+ *   ["David Lloyd Leisure", "David Lloyd", "Lloyd Leisure"]
+ * i.e. all contiguous sequences of 2+ words, longest first.
+ */
+function partialTerms(value: string): string[] {
+  const words = value.trim().split(/\s+/);
+  if (words.length <= 1) return [];
+  const terms: string[] = [];
+  for (let len = words.length; len >= 2; len--) {
+    for (let start = 0; start <= words.length - len; start++) {
+      terms.push(words.slice(start, start + len).join(' '));
+    }
+  }
+  return terms;
+}
+
 function classifyMatch(
   text: string,
-  project: { client_name: string; site_name: string; planning_reference: string }
+  project: {
+    client_name: string;
+    site_name: string;
+    planning_reference: string;
+    boolean_search_terms: string;
+  }
 ): { match_type: 'project_specific' | 'area_intelligence'; match_reason: string } {
   const lower = text.toLowerCase();
 
+  // --- 1. Primary: match on individual boolean search terms ---
+  if (project.boolean_search_terms) {
+    const terms = parseSearchTerms(project.boolean_search_terms);
+    for (const term of terms) {
+      if (term && lower.includes(term.toLowerCase())) {
+        return {
+          match_type: 'project_specific',
+          match_reason: `Matched: search term '${term}'`,
+        };
+      }
+    }
+  }
+
+  // --- 2. Exact match on project identifiers (may already be covered above) ---
   if (project.planning_reference && lower.includes(project.planning_reference.toLowerCase())) {
     return {
       match_type: 'project_specific',
@@ -30,6 +78,24 @@ function classifyMatch(
       match_type: 'project_specific',
       match_reason: `Matched: client name '${project.client_name}'`,
     };
+  }
+
+  // --- 3. Partial match on project identifiers (2+ consecutive words) ---
+  for (const term of partialTerms(project.site_name ?? '')) {
+    if (lower.includes(term.toLowerCase())) {
+      return {
+        match_type: 'project_specific',
+        match_reason: `Partial match: site name fragment '${term}'`,
+      };
+    }
+  }
+  for (const term of partialTerms(project.client_name ?? '')) {
+    if (lower.includes(term.toLowerCase())) {
+      return {
+        match_type: 'project_specific',
+        match_reason: `Partial match: client name fragment '${term}'`,
+      };
+    }
   }
 
   return {

@@ -12,20 +12,26 @@ For each suggestion provide:
 - url: The actual RSS feed URL or Google News search query
 - feed_type: One of "google_news", "local_news", "planning_press", "council"
 
-CRITICAL RULES FOR RSS URLs:
-- ONLY suggest RSS feed URLs you are HIGHLY confident actually exist and are currently active
-- Stick to well-known, major outlets where RSS is standard (BBC, major regional newspaper groups like Reach plc / Newsquest / JPI Media)
-- BBC local RSS feeds follow the pattern: https://feeds.bbci.co.uk/news/england/[region]/rss.xml
-- Do NOT guess or construct RSS URLs — if you are not sure an RSS feed exists, use a google_news search query instead
-- It is far better to suggest a google_news search than a broken RSS URL
-- For council feeds: most UK councils do NOT have public RSS feeds for planning. Use a google_news query scoped to the council name instead
+IMPORTANT — you MUST include a MIX of google_news queries AND RSS feeds. Do not return only Google News queries.
 
-For google_news type: provide a search query string (not a URL). These are always safe.
+RSS FEEDS YOU SHOULD SUGGEST (these are known to work):
+- BBC local/regional feeds: https://feeds.bbci.co.uk/news/england/[region]/rss.xml (e.g. beds_bucks_and_herts, cambridgeshire, london, etc.)
+- BBC main news: https://feeds.bbci.co.uk/news/rss.xml
+- Reach plc / Local World papers often have feeds at /news/rss.xml or /rss (e.g. Bedfordshire Live, Manchester Evening News, etc.)
+- Planning Resource: https://www.planningresource.co.uk/rss
+- The Planner (RTPI): https://www.theplanner.co.uk/rss.xml
+- Local newspapers from Newsquest, JPI Media, Archant often have /rss endpoints
 
-For planning_press: national trade outlets like Planning Resource, The Planner. Only include if you know their RSS URL.
+RULES FOR RSS URLs:
+- Always include the BBC regional RSS feed for the relevant region
+- Always include at least 1 national planning trade feed (Planning Resource or The Planner)
+- For local newspapers, suggest feeds from major publishers (Reach plc, Newsquest, JPI Media) that cover the area
+- If you are unsure whether a specific local newspaper has an RSS feed, suggest it anyway — the system will validate it automatically
+- For council feeds: most UK councils do NOT have reliable RSS feeds. Use a google_news query scoped to the council name instead
 
-Always include at least 3-4 Google News searches tailored to the project and area.
-Suggest 6-10 feeds total. Prefer more google_news queries over uncertain RSS URLs.
+For google_news type: provide a search query string (not a URL).
+
+TARGET MIX: Aim for 3-4 RSS feeds + 4-6 Google News queries = 8-10 suggestions total.
 
 Return ONLY a valid JSON array of objects with fields: name, url, feed_type. No markdown fences or extra text.`;
 

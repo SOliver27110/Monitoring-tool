@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import Anthropic from '@anthropic-ai/sdk';
+import Parser from 'rss-parser';
+
+const rssParser = new Parser();
 
 const SYSTEM_PROMPT = `You are an expert on UK local media, news outlets, and planning information sources. Given a Local Planning Authority (LPA) area and optional project details, suggest RSS feeds and Google News search queries that would be useful for monitoring local planning news coverage.
 
@@ -9,16 +12,61 @@ For each suggestion provide:
 - url: The actual RSS feed URL or Google News search query
 - feed_type: One of "google_news", "local_news", "planning_press", "council"
 
-Guidelines:
-- For google_news: provide a search query string (not a URL)
-- For local_news: provide actual RSS feed URLs for regional/local newspapers covering that area. Only suggest feeds you are confident exist. Common patterns: /rss, /feed, /rss.xml
-- For planning_press: include national planning trade outlets like Planning Resource, Planning Portal, The Planner if relevant
-- For council: suggest the council's planning page RSS if likely to exist, or a Google News query scoped to the council name + planning
-- Always include at least 2-3 Google News searches tailored to the project
-- Be realistic — don't invent URLs. If you're unsure about a specific RSS URL, use a Google News search instead
-- Suggest 5-10 feeds total
+CRITICAL RULES FOR RSS URLs:
+- ONLY suggest RSS feed URLs you are HIGHLY confident actually exist and are currently active
+- Stick to well-known, major outlets where RSS is standard (BBC, major regional newspaper groups like Reach plc / Newsquest / JPI Media)
+- BBC local RSS feeds follow the pattern: https://feeds.bbci.co.uk/news/england/[region]/rss.xml
+- Do NOT guess or construct RSS URLs — if you are not sure an RSS feed exists, use a google_news search query instead
+- It is far better to suggest a google_news search than a broken RSS URL
+- For council feeds: most UK councils do NOT have public RSS feeds for planning. Use a google_news query scoped to the council name instead
+
+For google_news type: provide a search query string (not a URL). These are always safe.
+
+For planning_press: national trade outlets like Planning Resource, The Planner. Only include if you know their RSS URL.
+
+Always include at least 3-4 Google News searches tailored to the project and area.
+Suggest 6-10 feeds total. Prefer more google_news queries over uncertain RSS URLs.
 
 Return ONLY a valid JSON array of objects with fields: name, url, feed_type. No markdown fences or extra text.`;
+
+/**
+ * Validate an RSS URL by attempting to fetch and parse it.
+ * Returns true if it returns valid RSS/Atom XML with at least one item.
+ */
+async function validateRssUrl(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'DevComms-MediaMonitor/1.0' },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return false;
+
+    const text = await response.text();
+
+    // Quick check: does it look like XML/RSS?
+    if (!text.includes('<rss') && !text.includes('<feed') && !text.includes('<channel')) {
+      return false;
+    }
+
+    // Full parse to confirm it's valid
+    const feed = await rssParser.parseString(text);
+    return (feed.items?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+export interface FeedSuggestion {
+  name: string;
+  url: string;
+  feed_type: string;
+  verified: boolean | null; // null = not applicable (google_news), true = validated, false = failed
+}
 
 export async function POST(req: NextRequest) {
   const { userId } = auth();
@@ -60,29 +108,42 @@ Suggest RSS feeds and search queries for monitoring planning-related media cover
       .map((block) => block.text)
       .join('');
 
-    const suggestions = JSON.parse(responseText) as Array<{
+    const rawSuggestions = JSON.parse(responseText) as Array<{
       name: string;
       url: string;
       feed_type: string;
     }>;
 
-    if (!Array.isArray(suggestions)) {
+    if (!Array.isArray(rawSuggestions)) {
       throw new Error('Invalid response format');
     }
 
-    // Validate feed_type values
     const validTypes = ['google_news', 'local_news', 'planning_press', 'council'];
-    const cleaned = suggestions
-      .filter((s) => s.name && s.url && validTypes.includes(s.feed_type))
-      .map((s) => ({
-        name: s.name,
-        url: s.url,
-        feed_type: s.feed_type,
-      }));
+    const cleaned = rawSuggestions.filter(
+      (s) => s.name && s.url && validTypes.includes(s.feed_type)
+    );
 
-    return NextResponse.json(cleaned);
+    // Validate RSS URLs in parallel (skip google_news — those are always valid)
+    const results: FeedSuggestion[] = await Promise.all(
+      cleaned.map(async (s) => {
+        if (s.feed_type === 'google_news') {
+          return { ...s, verified: null };
+        }
+
+        const isValid = await validateRssUrl(s.url);
+        return { ...s, verified: isValid };
+      })
+    );
+
+    // Sort: verified first, then google_news, then unverified last
+    results.sort((a, b) => {
+      const order = (v: boolean | null) => (v === true ? 0 : v === null ? 1 : 2);
+      return order(a.verified) - order(b.verified);
+    });
+
+    return NextResponse.json(results);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to generate suggestions';
-    return NextResponse.json({ error: message }, { status: 502 });
+    const errMessage = err instanceof Error ? err.message : 'Failed to generate suggestions';
+    return NextResponse.json({ error: errMessage }, { status: 502 });
   }
 }

@@ -16,6 +16,8 @@ import {
   ToggleRight,
   Sparkles,
   Check,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import type { Feed, FeedType, Project } from '@/lib/types';
 
@@ -37,6 +39,7 @@ interface Suggestion {
   name: string;
   url: string;
   feed_type: string;
+  verified: boolean | null; // null = google_news (always valid), true = RSS verified, false = RSS failed
   selected: boolean;
 }
 
@@ -101,12 +104,25 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
       const data = await res.json();
       // Filter out feeds that already exist (by URL)
       const existingUrls = new Set(feeds.map((f) => f.url));
-      const filtered = (data as Array<{ name: string; url: string; feed_type: string }>)
+      const filtered = (data as Array<{ name: string; url: string; feed_type: string; verified: boolean | null }>)
         .filter((s) => !existingUrls.has(s.url))
-        .map((s) => ({ ...s, selected: true }));
+        .map((s) => ({
+          ...s,
+          // Auto-select verified and google_news, deselect unverified RSS
+          selected: s.verified !== false,
+        }));
 
       if (filtered.length === 0) {
         showToast('No new feeds to suggest — all suggestions already exist', 'info');
+      }
+
+      const verified = filtered.filter((s) => s.verified === true).length;
+      const unverified = filtered.filter((s) => s.verified === false).length;
+      if (unverified > 0) {
+        showToast(
+          `${verified} RSS feed${verified !== 1 ? 's' : ''} verified, ${unverified} could not be reached (deselected)`,
+          'info'
+        );
       }
 
       setSuggestions(filtered);
@@ -287,7 +303,11 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
             {suggestions.map((suggestion, i) => (
               <label
                 key={i}
-                className="flex items-start gap-3 rounded-lg border border-purple-100 bg-white p-3 cursor-pointer hover:border-purple-300"
+                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:border-purple-300 ${
+                  suggestion.verified === false
+                    ? 'border-red-200 bg-red-50/50'
+                    : 'border-purple-100 bg-white'
+                }`}
               >
                 <input
                   type="checkbox"
@@ -303,6 +323,18 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
                     <Badge variant="info">
                       {feedTypeLabels[suggestion.feed_type as FeedType] ?? suggestion.feed_type}
                     </Badge>
+                    {suggestion.verified === true && (
+                      <span className="flex items-center gap-0.5 text-xs text-green-600">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        Verified
+                      </span>
+                    )}
+                    {suggestion.verified === false && (
+                      <span className="flex items-center gap-0.5 text-xs text-red-500">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        Not reachable
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
                     {suggestion.url}

@@ -98,6 +98,7 @@ export async function ingestFeedsForProject(
 ): Promise<{ ingested: number; skipped: number; errors: string[] }> {
   const feeds = getFeedsForLpa(project.lpa);
   const specificTerms = extractSpecificTerms(project);
+  console.log(`[RSS] Project "${project.client_name} / ${project.site_name}" specificTerms=${JSON.stringify(specificTerms)}`);
   let ingested = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -144,7 +145,17 @@ export async function ingestFeedsForProject(
         continue;
       }
 
-      if (!isRelevant(title, description, specificTerms)) {
+      // --- Relevance debug logging ---
+      const haystack = `${title} ${description}`.toLowerCase();
+      const matchedTerm = specificTerms.find((term) => haystack.includes(term)) ?? null;
+      const matchedPlanningKw = PLANNING_KEYWORDS.find((kw) => haystack.includes(kw)) ?? null;
+      const accepted = matchedTerm !== null && matchedPlanningKw !== null;
+      console.log(
+        `[RSS:relevance] title="${title.slice(0, 80)}" | termMatch=${matchedTerm ?? 'NONE'} | planningKw=${matchedPlanningKw ?? 'NONE'} | ${accepted ? 'ACCEPTED' : 'SKIPPED'}`
+      );
+      // --- End debug logging ---
+
+      if (!accepted) {
         skipped++;
         continue;
       }

@@ -27,10 +27,10 @@ const GENERIC_SITE_WORDS = new Set([
 
 /** Planning-context keywords — at least one must appear for Condition B. */
 const PLANNING_KEYWORDS = [
-  'planning', 'development', 'application', 'permission', 'consent',
-  'housing', 'homes', 'proposal', 'appeal', 'committee',
+  'planning', 'development', 'application', 'permission',
+  'housing', 'proposal', 'appeal', 'committee',
   'councillor', 'objection', 'consultation', 'developer',
-  'housebuilder', 'residents', 'approved', 'refused', 'allocated',
+  'housebuilder', 'refused', 'allocated',
 ];
 
 /**
@@ -63,11 +63,21 @@ function extractSpecificTerms(project: ProjectInput): string[] {
   return [...new Set(terms)];
 }
 
+/** Escape special regex characters so a literal string can be used in a RegExp. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Test whether `term` appears in `haystack` as a whole word (word-boundary match). */
+function wordMatch(haystack: string, term: string): boolean {
+  return new RegExp('\\b' + escapeRegex(term) + '\\b', 'i').test(haystack);
+}
+
 /**
  * Two-part relevance test. An article passes only when BOTH conditions hold:
  *   A) Contains a specific project term (planning ref, client name, or
- *      meaningful site-name part).
- *   B) Contains at least one planning-context keyword.
+ *      meaningful site-name part) as a whole word.
+ *   B) Contains at least one planning-context keyword as a whole word.
  *
  * The LPA city name alone is never sufficient.
  */
@@ -76,14 +86,14 @@ function isRelevant(
   description: string,
   specificTerms: string[]
 ): boolean {
-  const haystack = `${title} ${description}`.toLowerCase();
+  const haystack = `${title} ${description}`;
 
-  // Condition A — specific project term match
-  const hasSpecificTerm = specificTerms.some((term) => haystack.includes(term));
+  // Condition A — specific project term match (word-boundary)
+  const hasSpecificTerm = specificTerms.some((term) => wordMatch(haystack, term));
   if (!hasSpecificTerm) return false;
 
-  // Condition B — planning context present
-  const hasPlanningContext = PLANNING_KEYWORDS.some((kw) => haystack.includes(kw));
+  // Condition B — planning context present (word-boundary)
+  const hasPlanningContext = PLANNING_KEYWORDS.some((kw) => wordMatch(haystack, kw));
   return hasPlanningContext;
 }
 
@@ -98,7 +108,6 @@ export async function ingestFeedsForProject(
 ): Promise<{ ingested: number; skipped: number; errors: string[] }> {
   const feeds = getFeedsForLpa(project.lpa);
   const specificTerms = extractSpecificTerms(project);
-  console.log(`[RSS] Project "${project.client_name} / ${project.site_name}" specificTerms=${JSON.stringify(specificTerms)}`);
   let ingested = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -125,7 +134,6 @@ export async function ingestFeedsForProject(
     try {
       const parsed = await parser.parseURL(feed.url);
       items = parsed.items ?? [];
-      console.log(`[RSS] Feed "${feed.name}" returned ${items.length} items (before relevance filter)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Feed fetch failed';
       if (msg.includes('timed out')) {
@@ -145,17 +153,7 @@ export async function ingestFeedsForProject(
         continue;
       }
 
-      // --- Relevance debug logging ---
-      const haystack = `${title} ${description}`.toLowerCase();
-      const matchedTerm = specificTerms.find((term) => haystack.includes(term)) ?? null;
-      const matchedPlanningKw = PLANNING_KEYWORDS.find((kw) => haystack.includes(kw)) ?? null;
-      const accepted = matchedTerm !== null && matchedPlanningKw !== null;
-      console.log(
-        `[RSS:relevance] title="${title.slice(0, 80)}" | termMatch=${matchedTerm ?? 'NONE'} | planningKw=${matchedPlanningKw ?? 'NONE'} | ${accepted ? 'ACCEPTED' : 'SKIPPED'}`
-      );
-      // --- End debug logging ---
-
-      if (!accepted) {
+      if (!isRelevant(title, description, specificTerms)) {
         skipped++;
         continue;
       }
@@ -178,10 +176,6 @@ export async function ingestFeedsForProject(
           review_status: 'pending_analysis',
           created_by: createdBy,
         };
-
-        if (ingested === 0 && errors.length === 0) {
-          console.log('[RSS] First insert payload:', JSON.stringify(row, null, 2));
-        }
 
         const { error: insertError } = await supabaseAdmin
           .from('analysis_items')

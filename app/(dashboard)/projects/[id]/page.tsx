@@ -106,12 +106,20 @@ export default function ProjectDashboardPage() {
     setScanning(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/scan`, { method: 'POST' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? 'Scan failed');
+      const text = await res.text();
+
+      let data: { message?: string; error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Scan returned an unexpected response — it may have timed out. Try again.');
       }
-      const data = await res.json();
-      showToast(data.message, 'success');
+
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Scan failed');
+      }
+
+      showToast(data.message ?? 'Scan complete', 'success');
       // Refresh dashboard data after scan
       await loadData();
     } catch (err) {

@@ -150,8 +150,25 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const userId = await ensureUserInSupabase();
+  let userId: string;
+  try {
+    userId = await ensureUserInSupabase();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const projectId = params.id;
+
+  try {
+    return await runScan(projectId, userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Scan failed unexpectedly';
+    console.error('[Project Scan] Unhandled error:', err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function runScan(projectId: string, userId: string) {
 
   // Fetch project
   const { data: project, error: projErr } = await supabaseAdmin

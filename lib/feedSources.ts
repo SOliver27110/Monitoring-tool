@@ -60,6 +60,18 @@ const FEED_LIBRARY: Record<string, FeedSource> = {
     publisher: 'Newsquest',
     verified: false,
   },
+  'bedfordshire-live': {
+    name: 'Bedfordshire Live',
+    url: 'https://www.bedfordshirelive.co.uk/?service=rss',
+    publisher: 'Reach',
+    verified: false,
+  },
+  'bedford-independent': {
+    name: 'Bedford Independent',
+    url: 'https://www.bedfordindependent.co.uk/feed',
+    publisher: 'Independent',
+    verified: false,
+  },
 };
 
 const LPA_MAPPINGS: [string, string[]][] = [
@@ -82,6 +94,10 @@ const LPA_MAPPINGS: [string, string[]][] = [
   ['tewkesbury', ['gloucestershire-live']],
   ['cotswold', ['gloucestershire-live']],
   ['gloucestershire', ['gloucestershire-live']],
+  // Bedfordshire
+  ['central bedfordshire', ['bedfordshire-live']],
+  ['bedford borough', ['bedfordshire-live', 'bedford-independent']],
+  ['bedfordshire', ['bedfordshire-live']],
   // West Midlands
   ['birmingham', ['birmingham-mail']],
   ['solihull', ['birmingham-mail']],

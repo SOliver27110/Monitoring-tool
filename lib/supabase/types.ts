@@ -93,6 +93,8 @@ export interface Database {
           reviewed_at: string | null;
           match_type: string | null;
           match_reason: string | null;
+          confidence_score: number | null;
+          needs_review: boolean;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -114,6 +116,8 @@ export interface Database {
           reviewed_at?: string | null;
           match_type?: string | null;
           match_reason?: string | null;
+          confidence_score?: number | null;
+          needs_review?: boolean;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -127,6 +131,8 @@ export interface Database {
           reviewed_at?: string | null;
           match_type?: string | null;
           match_reason?: string | null;
+          confidence_score?: number | null;
+          needs_review?: boolean;
           updated_at?: string;
         };
         Relationships: [];
@@ -162,6 +168,39 @@ export interface Database {
         };
         Update: {
           id?: never;
+        };
+        Relationships: [];
+      };
+      feeds: {
+        Row: {
+          id: string;
+          project_id: string;
+          name: string;
+          feed_type: string;
+          feed_url: string;
+          enabled: boolean;
+          last_fetched_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          name: string;
+          feed_type?: string;
+          feed_url: string;
+          enabled?: boolean;
+          last_fetched_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          feed_type?: string;
+          feed_url?: string;
+          enabled?: boolean;
+          last_fetched_at?: string | null;
+          updated_at?: string;
         };
         Relationships: [];
       };

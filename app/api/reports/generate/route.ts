@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { ensureUserInSupabase, requireRole } from '@/lib/auth';
-import Anthropic from '@anthropic-ai/sdk';
+import { generateReportContent } from '@/lib/anthropic';
 import type { ReportContent, SentimentTrend } from '@/lib/types';
-
-const REPORT_SYSTEM_PROMPT = `You are a media monitoring report writer for a UK planning consultancy. Given the project details and this week's analysis items, produce a structured weekly report.
-
-Return ONLY valid JSON with these fields:
-- key_developments: string (2-3 sentence summary of the most important developments this week)
-- items_requiring_action: string (specific recommended actions based on the items, or "None this week" if no urgent items)
-- sources_reviewed: string[] (brief list of source descriptions from the items)
-
-Be concise, factual, and specific to UK planning context.`;
 
 function getWeekBounds(): { weekStart: Date; weekEnd: Date; lastWeekStart: Date } {
   const now = new Date();
@@ -24,10 +15,6 @@ function getWeekBounds(): { weekStart: Date; weekEnd: Date; lastWeekStart: Date 
 
   const lastMonday = new Date(thisMonday);
   lastMonday.setDate(thisMonday.getDate() - 7);
-
-  const lastSunday = new Date(thisMonday);
-  lastSunday.setDate(thisMonday.getDate() - 1);
-  lastSunday.setHours(23, 59, 59, 999);
 
   return {
     weekStart: thisMonday,
@@ -123,23 +110,17 @@ export async function POST(req: NextRequest) {
   if (items.some((i) => i.alert_level === 'Action Required')) alertLevel = 'red';
   else if (items.some((i) => i.alert_level === 'Watch') && alertLevel === 'green') alertLevel = 'yellow';
 
-  // Generate AI report content
+  // Generate AI report content using Sonnet
   let keyDevelopments = 'No items to analyse this week.';
   let itemsRequiringAction = 'None this week.';
   let sourcesReviewed: string[] = [];
 
   if (items.length > 0) {
-    try {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) throw new Error('API key not configured');
+    const itemSummaries = items.map((i, idx) =>
+      `Item ${idx + 1}: [${i.sentiment}] [${i.alert_level}] ${i.summary} — Action: ${i.recommended_action}`
+    ).join('\n');
 
-      const client = new Anthropic({ apiKey });
-
-      const itemSummaries = items.map((i, idx) =>
-        `Item ${idx + 1}: [${i.sentiment}] [${i.alert_level}] ${i.summary} — Action: ${i.recommended_action}`
-      ).join('\n');
-
-      const userContent = `Project: ${project.client_name} — ${project.site_name}
+    const userContent = `Project: ${project.client_name} — ${project.site_name}
 Planning ref: ${project.planning_reference}
 LPA: ${project.lpa}
 Stage: ${project.application_stage}
@@ -147,37 +128,13 @@ Stage: ${project.application_stage}
 This week's ${items.length} analysis items:
 ${itemSummaries}`;
 
-      const message = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: REPORT_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
-      });
-
-      const responseText = message.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
-
-      try {
-        const parsed = JSON.parse(responseText) as {
-          key_developments: string;
-          items_requiring_action: string;
-          sources_reviewed: string[];
-        };
-        keyDevelopments = parsed.key_developments;
-        itemsRequiringAction = parsed.items_requiring_action;
-        sourcesReviewed = Array.isArray(parsed.sources_reviewed) ? parsed.sources_reviewed : [];
-      } catch {
-        // Fallback: use concatenated summaries
-        keyDevelopments = items.slice(0, 3).map((i) => i.summary).join(' ');
-        itemsRequiringAction = items
-          .filter((i) => i.alert_level === 'Action Required')
-          .map((i) => i.recommended_action)
-          .join('; ') || 'None this week.';
-      }
+    try {
+      const reportData = await generateReportContent(userContent);
+      keyDevelopments = reportData.key_developments;
+      itemsRequiringAction = reportData.items_requiring_action;
+      sourcesReviewed = reportData.sources_reviewed;
     } catch {
-      // AI unavailable — fallback to manual aggregation
+      // Fallback to manual aggregation
       keyDevelopments = items.slice(0, 3).map((i) => i.summary).join(' ');
       itemsRequiringAction = items
         .filter((i) => i.alert_level === 'Action Required')

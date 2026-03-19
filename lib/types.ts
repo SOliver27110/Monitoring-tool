@@ -80,6 +80,7 @@ export interface AnalysisResult {
   notable_voices: string[];
   key_themes: string[];
   recommended_action: string;
+  confidence_score: number;
 }
 
 export interface AnalysisItem {
@@ -100,6 +101,8 @@ export interface AnalysisItem {
   reviewed_at: string | null;
   match_type: MatchType | null;
   match_reason: string | null;
+  confidence_score: number | null;
+  needs_review: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -133,6 +136,28 @@ export interface ReportContent {
   notable_voices: string[];
   items_requiring_action: string;
   sources_reviewed: string[];
+}
+
+export type FeedType = 'google_news' | 'rss_direct';
+
+export interface Feed {
+  id: string;
+  project_id: string;
+  name: string;
+  feed_type: FeedType;
+  feed_url: string;
+  enabled: boolean;
+  last_fetched_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeedFormData {
+  project_id: string;
+  name: string;
+  feed_type: FeedType;
+  feed_url: string;
+  enabled: boolean;
 }
 
 export interface ApiError {

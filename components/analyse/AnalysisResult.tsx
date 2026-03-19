@@ -21,6 +21,12 @@ export function AnalysisResult({ result }: AnalysisResultProps) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={sentimentVariant[result.sentiment]}>{result.sentiment}</Badge>
         <ItemAlertBadge level={result.alert_level} />
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          result.confidence_score >= 70 ? 'bg-green-50 text-green-700' :
+          result.confidence_score >= 50 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'
+        }`}>
+          Confidence: {result.confidence_score}%
+        </span>
       </div>
 
       <div>

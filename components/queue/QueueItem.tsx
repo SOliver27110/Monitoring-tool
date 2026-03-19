@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/Badge';
 import { ItemAlertBadge } from '@/components/ui/AlertBadge';
 import { Button } from '@/components/ui/Button';
-import { Check, X } from 'lucide-react';
+import { Check, X, AlertTriangle } from 'lucide-react';
 import type { AnalysisItem, Sentiment } from '@/lib/types';
 
 interface QueueItemProps {
@@ -48,6 +48,20 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
             {item.match_type && (
               <Badge variant={item.match_type === 'project_specific' ? 'info' : 'default'}>
                 {item.match_type === 'project_specific' ? 'Project' : 'Area Intel'}
+              </Badge>
+            )}
+            {item.confidence_score !== null && (
+              <span className={`text-xs font-medium ${
+                item.confidence_score >= 70 ? 'text-green-600' :
+                item.confidence_score >= 50 ? 'text-yellow-600' : 'text-red-600'
+              }`}>
+                {item.confidence_score}%
+              </span>
+            )}
+            {item.needs_review && (
+              <Badge variant="warning">
+                <AlertTriangle className="h-3 w-3 mr-0.5" />
+                Needs Review
               </Badge>
             )}
           </div>

@@ -75,6 +75,13 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Analysis failed';
       errors.push(`[${item.id}] ${msg}`);
+
+      // Mark as failed so it won't be retried endlessly
+      await supabaseAdmin
+        .from('analysis_items')
+        .update({ review_status: 'analysis_failed' })
+        .eq('id', item.id)
+        .eq('review_status', 'pending_analysis');
     }
   }
 

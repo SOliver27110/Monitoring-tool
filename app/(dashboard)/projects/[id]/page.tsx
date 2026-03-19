@@ -267,6 +267,36 @@ export default function ProjectDashboardPage() {
     }
   }
 
+  // ─── Dashboard tab data (must be before early returns for hook rules) ──
+
+  const { thisWeekStart, lastWeekStart, lastWeekEnd } = getWeekBounds();
+
+  const periodCutoff = getPeriodCutoff(dashboardPeriod);
+  const filteredItems = useMemo(() => {
+    const items = periodCutoff
+      ? allItems.filter((i) => new Date(i.created_at) >= periodCutoff)
+      : allItems;
+    return [...items].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [allItems, periodCutoff]);
+
+  const thisWeekItems = allItems.filter(
+    (i) => new Date(i.created_at) >= new Date(thisWeekStart)
+  );
+  const lastWeekItems = allItems.filter(
+    (i) =>
+      new Date(i.created_at) >= new Date(lastWeekStart) &&
+      new Date(i.created_at) <= new Date(lastWeekEnd)
+  );
+
+  const { trend, thisWeekPct, lastWeekPct } = calculateSentimentTrend(thisWeekItems, lastWeekItems);
+  const voices = aggregateVoices(filteredItems);
+  const actionItems = filteredItems.filter((i) => i.alert_level === 'Action Required');
+  const projectSpecificItems = filteredItems.filter((i) => i.match_type === 'project_specific');
+  const areaIntelItems = filteredItems.filter((i) => i.match_type !== 'project_specific');
+  const hasData = allItems.length > 0;
+
   // ─── Loading / not found ─────────────────────────────────────────
 
   if (loading) {
@@ -285,38 +315,6 @@ export default function ProjectDashboardPage() {
       />
     );
   }
-
-  // ─── Dashboard tab data ──────────────────────────────────────────
-
-  const { thisWeekStart, lastWeekStart, lastWeekEnd } = getWeekBounds();
-
-  // Items filtered by selectable period, sorted newest first
-  const periodCutoff = getPeriodCutoff(dashboardPeriod);
-  const filteredItems = useMemo(() => {
-    const items = periodCutoff
-      ? allItems.filter((i) => new Date(i.created_at) >= periodCutoff)
-      : allItems;
-    return [...items].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [allItems, periodCutoff]);
-
-  // Week-based items for the stats cards (always compare this week vs last week)
-  const thisWeekItems = allItems.filter(
-    (i) => new Date(i.created_at) >= new Date(thisWeekStart)
-  );
-  const lastWeekItems = allItems.filter(
-    (i) =>
-      new Date(i.created_at) >= new Date(lastWeekStart) &&
-      new Date(i.created_at) <= new Date(lastWeekEnd)
-  );
-
-  const { trend, thisWeekPct, lastWeekPct } = calculateSentimentTrend(thisWeekItems, lastWeekItems);
-  const voices = aggregateVoices(filteredItems);
-  const actionItems = filteredItems.filter((i) => i.alert_level === 'Action Required');
-  const projectSpecificItems = filteredItems.filter((i) => i.match_type === 'project_specific');
-  const areaIntelItems = filteredItems.filter((i) => i.match_type !== 'project_specific');
-  const hasData = allItems.length > 0;
 
   // ─── Render ──────────────────────────────────────────────────────
 

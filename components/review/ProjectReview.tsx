@@ -54,6 +54,7 @@ export function ProjectReview({ projectId, onArticlesChanged }: ProjectReviewPro
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeTab]);
 
   useEffect(() => {

@@ -41,6 +41,7 @@ export default function ProjectReportPage() {
         showToast('Failed to load report data', 'error');
       })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   async function generateReport() {

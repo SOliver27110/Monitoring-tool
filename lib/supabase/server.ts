@@ -23,4 +23,10 @@ export function getSupabaseAdmin(): SupabaseClient<Database> {
   return client;
 }
 
-export const supabaseAdmin = getSupabaseAdmin();
+/** Lazy proxy — only connects when first accessed at runtime, not at build time */
+export const supabaseAdmin = new Proxy({} as SupabaseClient<Database>, {
+  get(_target, prop) {
+    const instance = getSupabaseAdmin();
+    return Reflect.get(instance, prop);
+  },
+});

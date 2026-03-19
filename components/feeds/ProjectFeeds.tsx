@@ -78,6 +78,7 @@ export function ProjectFeeds({ project }: ProjectFeedsProps) {
 
   useEffect(() => {
     loadFeeds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
   async function handleSuggest() {

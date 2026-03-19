@@ -26,6 +26,7 @@ export default function ReportsPage() {
         showToast('Failed to load reports', 'error');
       })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

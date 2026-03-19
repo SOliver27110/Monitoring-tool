@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -15,17 +15,12 @@ import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
 import { ProjectFeeds } from '@/components/feeds/ProjectFeeds';
+import { ProjectReview } from '@/components/review/ProjectReview';
 import { useToast } from '@/components/ui/Toast';
-import { ItemAlertBadge } from '@/components/ui/AlertBadge';
-import { Pencil, FileText, BarChart3, Radar, Check, X, CheckCheck, AlertTriangle, Trash2 } from 'lucide-react';
-import type { Project, AnalysisItem, AlertLevel, Sentiment, SentimentTrend as SentimentTrendType } from '@/lib/types';
+import { Pencil, FileText, BarChart3, Radar, Trash2 } from 'lucide-react';
+import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
-const sentimentVariant: Record<Sentiment, 'success' | 'default' | 'danger' | 'warning'> = {
-  Supportive: 'success',
-  Neutral: 'default',
-  Opposed: 'danger',
-  Mixed: 'warning',
-};
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 function getWeekBounds(): { thisWeekStart: string; lastWeekStart: string; lastWeekEnd: string } {
   const now = new Date();
@@ -67,7 +62,6 @@ function calculateSentimentTrend(
   const lastWeekPct = Math.round((lastWeekSupportive / lastWeekItems.length) * 100);
 
   const diff = thisWeekPct - lastWeekPct;
-
   if (diff > 10) return { trend: 'improving', thisWeekPct, lastWeekPct };
   if (diff < -10) return { trend: 'worsening', thisWeekPct, lastWeekPct };
   return { trend: 'stable', thisWeekPct, lastWeekPct };
@@ -85,40 +79,43 @@ function aggregateVoices(items: AnalysisItem[]): Array<{ name: string; count: nu
     .sort((a, b) => b.count - a.count);
 }
 
+// ─── Page tabs ───────────────────────────────────────────────────────
+
+type PageTab = 'dashboard' | 'review' | 'feeds';
+
+// ─── Component ───────────────────────────────────────────────────────
+
 export default function ProjectDashboardPage() {
   const params = useParams();
   const projectId = params.id as string;
   const [project, setProject] = useState<Project | null>(null);
   const [allItems, setAllItems] = useState<AnalysisItem[]>([]);
-  const [unreviewedItems, setUnreviewedItems] = useState<AnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [activeTab, setActiveTab] = useState<PageTab>('review');
   const [lastScanStats, setLastScanStats] = useState<{
     articles_found: number;
     articles_fetched: number;
-    articles_analysed: number;
+    articles_matched: number;
     articles_skipped_duplicate: number;
-    articles_pending_analysis: number;
   } | null>(null);
   const { showToast } = useToast();
 
-  function loadData() {
+  const loadDashboardData = useCallback(() => {
     return Promise.all([
       fetch(`/api/projects/${projectId}`).then((r) => r.json()),
       fetch(`/api/items?project_id=${projectId}&review_status=approved`).then((r) => r.json()),
-      fetch(`/api/items?project_id=${projectId}&review_status=unreviewed`).then((r) => r.json()),
     ])
-      .then(([proj, approved, unreviewed]) => {
+      .then(([proj, approved]) => {
         setProject(proj);
         setAllItems(Array.isArray(approved) ? approved : []);
-        setUnreviewedItems(Array.isArray(unreviewed) ? unreviewed : []);
       })
       .catch(() => {});
-  }
+  }, [projectId]);
 
   useEffect(() => {
-    loadData().finally(() => setLoading(false));
-  }, [projectId]);
+    loadDashboardData().finally(() => setLoading(false));
+  }, [loadDashboardData]);
 
   async function runScan() {
     const res = await fetch(`/api/projects/${projectId}/scan`, { method: 'POST' });
@@ -138,13 +135,11 @@ export default function ProjectDashboardPage() {
     setLastScanStats({
       articles_found: (data.articles_found as number) ?? 0,
       articles_fetched: (data.articles_fetched as number) ?? 0,
-      articles_analysed: (data.articles_analysed as number) ?? 0,
+      articles_matched: (data.articles_matched as number) ?? 0,
       articles_skipped_duplicate: (data.articles_skipped_duplicate as number) ?? 0,
-      articles_pending_analysis: (data.articles_pending_analysis as number) ?? 0,
     });
 
     showToast((data.message as string) ?? 'Scan complete', 'success');
-    await loadData();
   }
 
   async function handleScan() {
@@ -152,6 +147,8 @@ export default function ProjectDashboardPage() {
     setLastScanStats(null);
     try {
       await runScan();
+      // Switch to review tab to show new articles
+      setActiveTab('review');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Scan failed';
       showToast(message, 'error');
@@ -164,16 +161,14 @@ export default function ProjectDashboardPage() {
     setScanning(true);
     setLastScanStats(null);
     try {
-      // Clear existing data
       const clearRes = await fetch(`/api/projects/${projectId}/clear`, { method: 'DELETE' });
-      if (!clearRes.ok) {
-        throw new Error('Failed to clear existing data');
-      }
+      if (!clearRes.ok) throw new Error('Failed to clear existing data');
       const clearData = await clearRes.json();
       showToast(clearData.message, 'info');
 
-      // Re-scan
       await runScan();
+      setActiveTab('review');
+      await loadDashboardData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clear & rescan failed';
       showToast(message, 'error');
@@ -182,52 +177,7 @@ export default function ProjectDashboardPage() {
     }
   }
 
-  async function reviewItem(itemId: string, action: 'approve' | 'dismiss') {
-    try {
-      const res = await fetch(`/api/items/${itemId}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (!res.ok) throw new Error('Review failed');
-
-      // Move item out of unreviewed list
-      const item = unreviewedItems.find((i) => i.id === itemId);
-      setUnreviewedItems((prev) => prev.filter((i) => i.id !== itemId));
-
-      // If approved, add to the approved items list so dashboard updates live
-      if (action === 'approve' && item) {
-        setAllItems((prev) => [...prev, { ...item, review_status: 'approved' }]);
-      }
-    } catch {
-      showToast('Failed to review item', 'error');
-    }
-  }
-
-  async function approveAll() {
-    const ids = unreviewedItems.map((i) => i.id);
-    const approved: AnalysisItem[] = [];
-
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/items/${id}/review`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve' }),
-        });
-        if (res.ok) {
-          const item = unreviewedItems.find((i) => i.id === id);
-          if (item) approved.push({ ...item, review_status: 'approved' });
-        }
-      } catch {
-        // continue with remaining
-      }
-    }
-
-    setUnreviewedItems([]);
-    setAllItems((prev) => [...prev, ...approved]);
-    showToast(`${approved.length} item${approved.length !== 1 ? 's' : ''} approved`, 'success');
-  }
+  // ─── Loading / not found ─────────────────────────────────────────
 
   if (loading) {
     return (
@@ -245,6 +195,8 @@ export default function ProjectDashboardPage() {
       />
     );
   }
+
+  // ─── Dashboard tab data ──────────────────────────────────────────
 
   const { thisWeekStart, lastWeekStart, lastWeekEnd } = getWeekBounds();
 
@@ -264,8 +216,11 @@ export default function ProjectDashboardPage() {
   const areaIntelItems = thisWeekItems.filter((i) => i.match_type !== 'project_specific');
   const hasData = allItems.length > 0;
 
+  // ─── Render ──────────────────────────────────────────────────────
+
   return (
     <div>
+      {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{project.client_name}</h1>
@@ -310,27 +265,6 @@ export default function ProjectDashboardPage() {
         </div>
       </div>
 
-      {/* Scan stats banner */}
-      {lastScanStats && (
-        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span className="text-blue-900 font-medium">Last scan:</span>
-            <span className="text-blue-700">{lastScanStats.articles_found} found</span>
-            <span className="text-blue-700">{lastScanStats.articles_fetched} new</span>
-            <span className="text-blue-700">{lastScanStats.articles_analysed} analysed</span>
-            {lastScanStats.articles_skipped_duplicate > 0 && (
-              <span className="text-blue-500">{lastScanStats.articles_skipped_duplicate} duplicates skipped</span>
-            )}
-            {lastScanStats.articles_pending_analysis > 0 && (
-              <span className="text-amber-600">{lastScanStats.articles_pending_analysis} pending analysis</span>
-            )}
-            {lastScanStats.articles_fetched === 0 && lastScanStats.articles_found > 0 && (
-              <span className="text-amber-600 font-medium">All articles were duplicates — use &quot;Clear &amp; Rescan&quot; to start fresh</span>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Project details */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Card>
@@ -359,189 +293,146 @@ export default function ProjectDashboardPage() {
         </Card>
       </div>
 
-      {/* Feeds section */}
-      <div className="mb-6">
-        <ProjectFeeds project={project} />
-      </div>
-
-      {/* Scan results — unreviewed items */}
-      {unreviewedItems.length > 0 && (
-        <Card className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <CardHeader
-              title="Scan Results"
-              description={`${unreviewedItems.length} item${unreviewedItems.length !== 1 ? 's' : ''} awaiting review`}
-            />
-            <Button size="sm" onClick={approveAll}>
-              <CheckCheck className="h-4 w-4" />
-              Approve All
-            </Button>
+      {/* Scan stats banner */}
+      {lastScanStats && (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-blue-900 font-medium">Scan complete:</span>
+            <span className="text-blue-700">{lastScanStats.articles_found} found</span>
+            <span className="text-blue-700">{lastScanStats.articles_fetched} new</span>
+            <span className="text-blue-700">{lastScanStats.articles_matched} project matches</span>
+            {lastScanStats.articles_skipped_duplicate > 0 && (
+              <span className="text-blue-500">{lastScanStats.articles_skipped_duplicate} duplicates skipped</span>
+            )}
           </div>
-          <div className="space-y-3">
-            {unreviewedItems.map((item) => (
-              <div
-                key={item.id}
-                className={`rounded-lg border bg-white p-4 ${
-                  item.alert_level === 'Action Required' ? 'border-l-4 border-l-red-500' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
-                        {item.sentiment}
-                      </Badge>
-                      <ItemAlertBadge level={item.alert_level as AnalysisItem['alert_level']} />
-                      <Badge variant={item.match_type === 'project_specific' ? 'info' : 'default'}>
-                        {item.match_type === 'project_specific' ? 'Project' : 'Area Intel'}
-                      </Badge>
-                      {item.confidence_score !== null && (
-                        <span className={`text-xs font-medium ${
-                          item.confidence_score >= 70 ? 'text-green-600' :
-                          item.confidence_score >= 50 ? 'text-yellow-600' : 'text-red-600'
-                        }`}>
-                          {item.confidence_score}%
-                        </span>
-                      )}
-                      {item.needs_review && (
-                        <Badge variant="warning">
-                          <AlertTriangle className="h-3 w-3 mr-0.5" />
-                          Low confidence
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
-                    <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>
-                    {item.source_url && (
-                      <a
-                        href={item.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-brand-purple hover:underline mt-1 inline-block"
-                      >
-                        View source
-                      </a>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => reviewItem(item.id, 'approve')}
-                      title="Approve"
-                      className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => reviewItem(item.id, 'dismiss')}
-                      title="Dismiss"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        </div>
       )}
 
-      {!hasData ? (
-        <Card>
-          <EmptyState
-            title="No coverage data yet"
-            description="Analyse content and assign it to this project to see dashboard metrics."
-            icon={<BarChart3 className="h-12 w-12" />}
-          />
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {/* Action items first */}
-          <ActionItems items={actionItems} />
+      {/* Tab navigation */}
+      <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
+        {([
+          { key: 'review' as const, label: 'Review Articles' },
+          { key: 'dashboard' as const, label: 'Dashboard' },
+          { key: 'feeds' as const, label: 'Feeds' },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-brand-purple text-brand-purple'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          {/* Metrics row */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <CoverageVolume thisWeek={thisWeekItems.length} lastWeek={lastWeekItems.length} />
-            <SentimentTrend
-              trend={trend}
-              thisWeekSupportive={thisWeekPct}
-              lastWeekSupportive={lastWeekPct}
-            />
-            <NotableVoices voices={voices} />
-          </div>
+      {/* Tab content */}
+      {activeTab === 'review' && (
+        <ProjectReview
+          projectId={projectId}
+          onArticlesChanged={loadDashboardData}
+        />
+      )}
 
-          {/* Project-specific coverage */}
-          <Card>
-            <CardHeader
-              title="Project Coverage This Week"
-              description={`${projectSpecificItems.length} item${projectSpecificItems.length !== 1 ? 's' : ''} directly mentioning this project`}
-            />
-            {projectSpecificItems.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">No project-specific mentions this week</p>
-            ) : (
-              <div className="space-y-3">
-                {projectSpecificItems.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-100 p-3">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Badge variant="info">Project</Badge>
-                      <Badge
-                        variant={
-                          item.sentiment === 'Supportive' ? 'success' :
-                          item.sentiment === 'Opposed' ? 'danger' :
-                          item.sentiment === 'Mixed' ? 'warning' : 'default'
-                        }
-                      >
-                        {item.sentiment}
-                      </Badge>
-                      <span className="text-xs text-gray-400">
-                        {new Date(item.created_at).toLocaleDateString('en-GB')}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-900">{item.summary}</p>
-                  </div>
-                ))}
+      {activeTab === 'feeds' && (
+        <ProjectFeeds project={project} />
+      )}
+
+      {activeTab === 'dashboard' && (
+        <>
+          {!hasData ? (
+            <Card>
+              <EmptyState
+                title="No coverage data yet"
+                description="Scan for articles and approve them to see dashboard metrics."
+                icon={<BarChart3 className="h-12 w-12" />}
+              />
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              <ActionItems items={actionItems} />
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <CoverageVolume thisWeek={thisWeekItems.length} lastWeek={lastWeekItems.length} />
+                <SentimentTrend
+                  trend={trend}
+                  thisWeekSupportive={thisWeekPct}
+                  lastWeekSupportive={lastWeekPct}
+                />
+                <NotableVoices voices={voices} />
               </div>
-            )}
-          </Card>
 
-          {/* Area intelligence */}
-          <Card>
-            <CardHeader
-              title="Area Intelligence This Week"
-              description={`${areaIntelItems.length} item${areaIntelItems.length !== 1 ? 's' : ''} from the wider area`}
-            />
-            {areaIntelItems.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">No area intelligence this week</p>
-            ) : (
-              <div className="space-y-3">
-                {areaIntelItems.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-100 p-3">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Badge variant="default">Area Intel</Badge>
-                      <Badge
-                        variant={
-                          item.sentiment === 'Supportive' ? 'success' :
-                          item.sentiment === 'Opposed' ? 'danger' :
-                          item.sentiment === 'Mixed' ? 'warning' : 'default'
-                        }
-                      >
-                        {item.sentiment}
-                      </Badge>
-                      <span className="text-xs text-gray-400">
-                        {new Date(item.created_at).toLocaleDateString('en-GB')}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-900">{item.summary}</p>
+              <Card>
+                <CardHeader
+                  title="Project Coverage This Week"
+                  description={`${projectSpecificItems.length} item${projectSpecificItems.length !== 1 ? 's' : ''} directly mentioning this project`}
+                />
+                {projectSpecificItems.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4">No project-specific mentions this week</p>
+                ) : (
+                  <div className="space-y-3">
+                    {projectSpecificItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-gray-100 p-3">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <Badge variant="info">Project</Badge>
+                          <Badge
+                            variant={
+                              item.sentiment === 'Supportive' ? 'success' :
+                              item.sentiment === 'Opposed' ? 'danger' :
+                              item.sentiment === 'Mixed' ? 'warning' : 'default'
+                            }
+                          >
+                            {item.sentiment}
+                          </Badge>
+                          <span className="text-xs text-gray-400">
+                            {new Date(item.created_at).toLocaleDateString('en-GB')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-900">{item.summary}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
+                )}
+              </Card>
+
+              <Card>
+                <CardHeader
+                  title="Area Intelligence This Week"
+                  description={`${areaIntelItems.length} item${areaIntelItems.length !== 1 ? 's' : ''} from the wider area`}
+                />
+                {areaIntelItems.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4">No area intelligence this week</p>
+                ) : (
+                  <div className="space-y-3">
+                    {areaIntelItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-gray-100 p-3">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <Badge variant="default">Area Intel</Badge>
+                          <Badge
+                            variant={
+                              item.sentiment === 'Supportive' ? 'success' :
+                              item.sentiment === 'Opposed' ? 'danger' :
+                              item.sentiment === 'Mixed' ? 'warning' : 'default'
+                            }
+                          >
+                            {item.sentiment}
+                          </Badge>
+                          <span className="text-xs text-gray-400">
+                            {new Date(item.created_at).toLocaleDateString('en-GB')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-900">{item.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

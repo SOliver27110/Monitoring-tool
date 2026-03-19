@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     project_id: project.id,
-    ingested: result.ingested,
+    pending: result.ingested,
     skipped: result.skipped,
     errors: result.errors,
   });

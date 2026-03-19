@@ -1,6 +1,5 @@
 import Parser from 'rss-parser';
 import { getFeedsForLpa } from '@/lib/feedSources';
-import { analyseContent } from '@/lib/anthropic';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 const FEED_TIMEOUT_MS = 8_000;
@@ -75,6 +74,11 @@ function isRelevant(
   return matchTerms.some((term) => haystack.includes(term));
 }
 
+/**
+ * Stage 1: Fetch RSS feeds, filter for relevance, and save matching articles
+ * as pending_analysis. No Anthropic API calls — analysis happens in Stage 2
+ * via /api/analyse-pending.
+ */
 export async function ingestFeedsForProject(
   project: ProjectInput,
   createdBy = 'system'
@@ -117,11 +121,6 @@ export async function ingestFeedsForProject(
       continue;
     }
 
-    // Cap articles analysed per feed to stay within Vercel Hobby 60s timeout.
-    // Raise this limit (or remove it) on Vercel Pro where the timeout is 300s.
-    const MAX_ANALYSED_PER_FEED = 5;
-    let analysedThisFeed = 0;
-
     for (const item of items) {
       const title = item.title ?? '';
       const description = item.contentSnippet || item.content || '';
@@ -142,22 +141,7 @@ export async function ingestFeedsForProject(
         continue;
       }
 
-      if (analysedThisFeed >= MAX_ANALYSED_PER_FEED) {
-        skipped++;
-        continue;
-      }
-
-      // Analyse and ingest
       const sourceText = `${title}\n\n${description}`.slice(0, 5000);
-
-      let analysis;
-      try {
-        analysis = await analyseContent(sourceText);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Analysis failed';
-        errors.push(`[${feed.name}] "${title}": ${msg}`);
-        continue;
-      }
 
       try {
         await supabaseAdmin.from('analysis_items').insert({
@@ -167,19 +151,12 @@ export async function ingestFeedsForProject(
           source_url: articleUrl,
           source_name: feed.name,
           published_at: item.pubDate ?? null,
-          summary: analysis.summary,
-          sentiment: analysis.sentiment,
-          alert_level: analysis.alert_level,
-          notable_voices: analysis.notable_voices,
-          key_themes: analysis.key_themes,
-          recommended_action: analysis.recommended_action,
-          review_status: 'unreviewed',
+          review_status: 'pending_analysis',
           created_by: createdBy,
         });
 
         existingUrls.add(articleUrl);
         ingested++;
-        analysedThisFeed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Insert failed';
         errors.push(`[${feed.name}] "${title}": ${msg}`);

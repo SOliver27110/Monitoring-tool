@@ -17,7 +17,7 @@ import { ActionItems } from '@/components/dashboard/ActionItems';
 import { ProjectFeeds } from '@/components/feeds/ProjectFeeds';
 import { useToast } from '@/components/ui/Toast';
 import { ItemAlertBadge } from '@/components/ui/AlertBadge';
-import { Pencil, FileText, BarChart3, Radar, Check, X, CheckCheck, AlertTriangle } from 'lucide-react';
+import { Pencil, FileText, BarChart3, Radar, Check, X, CheckCheck, AlertTriangle, Trash2 } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, Sentiment, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
 const sentimentVariant: Record<Sentiment, 'success' | 'default' | 'danger' | 'warning'> = {
@@ -93,6 +93,13 @@ export default function ProjectDashboardPage() {
   const [unreviewedItems, setUnreviewedItems] = useState<AnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [lastScanStats, setLastScanStats] = useState<{
+    articles_found: number;
+    articles_fetched: number;
+    articles_analysed: number;
+    articles_skipped_duplicate: number;
+    articles_pending_analysis: number;
+  } | null>(null);
   const { showToast } = useToast();
 
   function loadData() {
@@ -113,28 +120,62 @@ export default function ProjectDashboardPage() {
     loadData().finally(() => setLoading(false));
   }, [projectId]);
 
+  async function runScan() {
+    const res = await fetch(`/api/projects/${projectId}/scan`, { method: 'POST' });
+    const text = await res.text();
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('Scan returned an unexpected response — it may have timed out. Try again.');
+    }
+
+    if (!res.ok) {
+      throw new Error((data.error as string) ?? 'Scan failed');
+    }
+
+    setLastScanStats({
+      articles_found: (data.articles_found as number) ?? 0,
+      articles_fetched: (data.articles_fetched as number) ?? 0,
+      articles_analysed: (data.articles_analysed as number) ?? 0,
+      articles_skipped_duplicate: (data.articles_skipped_duplicate as number) ?? 0,
+      articles_pending_analysis: (data.articles_pending_analysis as number) ?? 0,
+    });
+
+    showToast((data.message as string) ?? 'Scan complete', 'success');
+    await loadData();
+  }
+
   async function handleScan() {
     setScanning(true);
+    setLastScanStats(null);
     try {
-      const res = await fetch(`/api/projects/${projectId}/scan`, { method: 'POST' });
-      const text = await res.text();
-
-      let data: { message?: string; error?: string };
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error('Scan returned an unexpected response — it may have timed out. Try again.');
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error ?? 'Scan failed');
-      }
-
-      showToast(data.message ?? 'Scan complete', 'success');
-      // Refresh dashboard data after scan
-      await loadData();
+      await runScan();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Scan failed';
+      showToast(message, 'error');
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function handleClearAndRescan() {
+    setScanning(true);
+    setLastScanStats(null);
+    try {
+      // Clear existing data
+      const clearRes = await fetch(`/api/projects/${projectId}/clear`, { method: 'DELETE' });
+      if (!clearRes.ok) {
+        throw new Error('Failed to clear existing data');
+      }
+      const clearData = await clearRes.json();
+      showToast(clearData.message, 'info');
+
+      // Re-scan
+      await runScan();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Clear & rescan failed';
       showToast(message, 'error');
     } finally {
       setScanning(false);
@@ -249,6 +290,17 @@ export default function ProjectDashboardPage() {
             <Radar className="h-4 w-4" />
             {scanning ? 'Scanning...' : 'Scan for Coverage'}
           </Button>
+          <RoleGate allowedRoles={['admin', 'project_lead']}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleClearAndRescan}
+              loading={scanning}
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear &amp; Rescan
+            </Button>
+          </RoleGate>
           <Link href={`/projects/${projectId}/report`}>
             <Button variant="secondary" size="sm">
               <FileText className="h-4 w-4" />
@@ -257,6 +309,27 @@ export default function ProjectDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Scan stats banner */}
+      {lastScanStats && (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-blue-900 font-medium">Last scan:</span>
+            <span className="text-blue-700">{lastScanStats.articles_found} found</span>
+            <span className="text-blue-700">{lastScanStats.articles_fetched} new</span>
+            <span className="text-blue-700">{lastScanStats.articles_analysed} analysed</span>
+            {lastScanStats.articles_skipped_duplicate > 0 && (
+              <span className="text-blue-500">{lastScanStats.articles_skipped_duplicate} duplicates skipped</span>
+            )}
+            {lastScanStats.articles_pending_analysis > 0 && (
+              <span className="text-amber-600">{lastScanStats.articles_pending_analysis} pending analysis</span>
+            )}
+            {lastScanStats.articles_fetched === 0 && lastScanStats.articles_found > 0 && (
+              <span className="text-amber-600 font-medium">All articles were duplicates — use &quot;Clear &amp; Rescan&quot; to start fresh</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Project details */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">

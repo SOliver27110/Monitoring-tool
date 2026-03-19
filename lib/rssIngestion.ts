@@ -144,7 +144,7 @@ export async function ingestFeedsForProject(
       const sourceText = `${title}\n\n${description}`.slice(0, 5000);
 
       try {
-        await supabaseAdmin.from('analysis_items').insert({
+        const row = {
           project_id: project.id,
           source_text: sourceText,
           source_type: 'rss-local',
@@ -153,7 +153,21 @@ export async function ingestFeedsForProject(
           published_at: item.pubDate ?? null,
           review_status: 'pending_analysis',
           created_by: createdBy,
-        });
+        };
+
+        if (ingested === 0 && errors.length === 0) {
+          console.log('[RSS] First insert payload:', JSON.stringify(row, null, 2));
+        }
+
+        const { error: insertError } = await supabaseAdmin
+          .from('analysis_items')
+          .insert(row);
+
+        if (insertError) {
+          console.error('[RSS] Supabase insert error:', JSON.stringify(insertError, null, 2));
+          errors.push(`[${feed.name}] "${title}": ${insertError.message}`);
+          continue;
+        }
 
         existingUrls.add(articleUrl);
         ingested++;

@@ -37,6 +37,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Attach pending article counts per project
+  if (data && data.length > 0) {
+    const projectIds = data.map((p: { id: string }) => p.id);
+
+    const { data: articleCounts } = await supabaseAdmin
+      .from('fetched_articles')
+      .select('project_id, status')
+      .in('project_id', projectIds)
+      .in('status', ['matched', 'pending', 'unmatched']);
+
+    const countMap: Record<string, number> = {};
+    for (const row of articleCounts ?? []) {
+      const pid = (row as { project_id: string }).project_id;
+      countMap[pid] = (countMap[pid] ?? 0) + 1;
+    }
+
+    for (const project of data) {
+      (project as Record<string, unknown>).pending_review_count = countMap[(project as { id: string }).id] ?? 0;
+    }
+  }
+
   return NextResponse.json(data);
 }
 

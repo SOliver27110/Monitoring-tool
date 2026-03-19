@@ -17,7 +17,7 @@ import { ActionItems } from '@/components/dashboard/ActionItems';
 import { ProjectFeeds } from '@/components/feeds/ProjectFeeds';
 import { ProjectReview } from '@/components/review/ProjectReview';
 import { useToast } from '@/components/ui/Toast';
-import { Pencil, FileText, BarChart3, Radar, Trash2 } from 'lucide-react';
+import { Pencil, FileText, BarChart3, Radar, Trash2, ExternalLink } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -83,6 +83,69 @@ function aggregateVoices(items: AnalysisItem[]): Array<{ name: string; count: nu
 
 type PageTab = 'dashboard' | 'review' | 'feeds';
 
+// ─── Analysis item display ───────────────────────────────────────────
+
+function AnalysisItemCard({
+  item,
+  badgeLabel,
+  badgeVariant,
+}: {
+  item: AnalysisItem;
+  badgeLabel: string;
+  badgeVariant: 'info' | 'default';
+}) {
+  const isActionRequired = item.alert_level === 'Action Required';
+
+  return (
+    <div className={`rounded-lg border p-3 ${isActionRequired ? 'border-l-4 border-l-red-500 border-gray-200' : 'border-gray-100'}`}>
+      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+        <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+        <Badge
+          variant={
+            item.sentiment === 'Supportive' ? 'success' :
+            item.sentiment === 'Opposed' ? 'danger' :
+            item.sentiment === 'Mixed' ? 'warning' : 'default'
+          }
+        >
+          {item.sentiment}
+        </Badge>
+        {isActionRequired && (
+          <Badge variant="danger">Action Required</Badge>
+        )}
+        <span className="text-xs text-gray-400">
+          {new Date(item.created_at).toLocaleDateString('en-GB')}
+        </span>
+      </div>
+      <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
+      {item.recommended_action && (
+        <p className="text-xs text-gray-500 italic mb-1.5">{item.recommended_action}</p>
+      )}
+      <div className="flex items-center gap-3">
+        {item.notable_voices.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {item.notable_voices.map((voice, i) => (
+              <span key={i} className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-0.5">
+                {voice}
+              </span>
+            ))}
+          </div>
+        )}
+        {item.source_url && (
+          <a
+            href={item.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-brand-purple hover:underline flex-shrink-0"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Source
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────
 
 export default function ProjectDashboardPage() {
@@ -90,6 +153,7 @@ export default function ProjectDashboardPage() {
   const projectId = params.id as string;
   const [project, setProject] = useState<Project | null>(null);
   const [allItems, setAllItems] = useState<AnalysisItem[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [activeTab, setActiveTab] = useState<PageTab>('review');
@@ -105,10 +169,12 @@ export default function ProjectDashboardPage() {
     return Promise.all([
       fetch(`/api/projects/${projectId}`).then((r) => r.json()),
       fetch(`/api/items?project_id=${projectId}&review_status=approved`).then((r) => r.json()),
+      fetch(`/api/projects/${projectId}/articles?status=matched,pending,unmatched`).then((r) => r.json()),
     ])
-      .then(([proj, approved]) => {
+      .then(([proj, approved, pending]) => {
         setProject(proj);
         setAllItems(Array.isArray(approved) ? approved : []);
+        setPendingCount(Array.isArray(pending) ? pending.length : 0);
       })
       .catch(() => {});
   }, [projectId]);
@@ -311,20 +377,37 @@ export default function ProjectDashboardPage() {
       {/* Tab navigation */}
       <div className="flex items-center gap-1 border-b border-gray-200 mb-6">
         {([
-          { key: 'review' as const, label: 'Review Articles' },
-          { key: 'dashboard' as const, label: 'Dashboard' },
-          { key: 'feeds' as const, label: 'Feeds' },
+          {
+            key: 'review' as const,
+            label: 'Review Articles',
+            count: pendingCount,
+          },
+          {
+            key: 'dashboard' as const,
+            label: 'Dashboard',
+            count: allItems.length,
+          },
+          { key: 'feeds' as const, label: 'Feeds', count: 0 },
         ]).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === tab.key
                 ? 'border-brand-purple text-brand-purple'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             {tab.label}
+            {tab.count > 0 && (
+              <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                tab.key === 'review'
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+                {tab.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -375,24 +458,7 @@ export default function ProjectDashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {projectSpecificItems.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-gray-100 p-3">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <Badge variant="info">Project</Badge>
-                          <Badge
-                            variant={
-                              item.sentiment === 'Supportive' ? 'success' :
-                              item.sentiment === 'Opposed' ? 'danger' :
-                              item.sentiment === 'Mixed' ? 'warning' : 'default'
-                            }
-                          >
-                            {item.sentiment}
-                          </Badge>
-                          <span className="text-xs text-gray-400">
-                            {new Date(item.created_at).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-900">{item.summary}</p>
-                      </div>
+                      <AnalysisItemCard key={item.id} item={item} badgeLabel="Project" badgeVariant="info" />
                     ))}
                   </div>
                 )}
@@ -408,24 +474,7 @@ export default function ProjectDashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {areaIntelItems.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-gray-100 p-3">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <Badge variant="default">Area Intel</Badge>
-                          <Badge
-                            variant={
-                              item.sentiment === 'Supportive' ? 'success' :
-                              item.sentiment === 'Opposed' ? 'danger' :
-                              item.sentiment === 'Mixed' ? 'warning' : 'default'
-                            }
-                          >
-                            {item.sentiment}
-                          </Badge>
-                          <span className="text-xs text-gray-400">
-                            {new Date(item.created_at).toLocaleDateString('en-GB')}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-900">{item.summary}</p>
-                      </div>
+                      <AnalysisItemCard key={item.id} item={item} badgeLabel="Area Intel" badgeVariant="default" />
                     ))}
                   </div>
                 )}

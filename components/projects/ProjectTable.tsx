@@ -10,9 +10,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { RoleGate } from '@/components/ui/RoleGate';
 import { Button } from '@/components/ui/Button';
-import { ScanButton } from '@/components/projects/ScanButton';
-import { FolderKanban, Plus, Pencil } from 'lucide-react';
+import { FolderKanban, Plus, Pencil, Inbox } from 'lucide-react';
 import type { Project, AlertLevel } from '@/lib/types';
+
+type ProjectWithCounts = Project & { pending_review_count?: number };
 
 const ALERT_FILTER_OPTIONS = [
   { value: '', label: 'All levels' },
@@ -22,7 +23,7 @@ const ALERT_FILTER_OPTIONS = [
 ];
 
 export function ProjectTable() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectWithCounts[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [alertFilter, setAlertFilter] = useState('');
@@ -87,7 +88,6 @@ export function ProjectTable() {
           />
         </div>
         <RoleGate allowedRoles={['admin', 'project_lead']}>
-          <ScanButton onComplete={fetchProjects} />
           <Link href="/projects/new">
             <Button size="md">
               <Plus className="h-4 w-4" />
@@ -143,6 +143,7 @@ export function ProjectTable() {
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Stage</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Lead</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Alert</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">To Review</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
@@ -171,6 +172,19 @@ export function ProjectTable() {
                     </td>
                     <td className="px-4 py-3">
                       <ProjectAlertBadge level={project.alert_level as AlertLevel} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {(project.pending_review_count ?? 0) > 0 ? (
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                        >
+                          <Inbox className="h-3 w-3" />
+                          {project.pending_review_count}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <RoleGate allowedRoles={['admin', 'project_lead']}>

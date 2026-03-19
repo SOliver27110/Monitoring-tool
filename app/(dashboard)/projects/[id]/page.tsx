@@ -15,7 +15,8 @@ import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
 import { ProjectFeeds } from '@/components/feeds/ProjectFeeds';
-import { Pencil, FileText, BarChart3 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { Pencil, FileText, BarChart3, Radar } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
 function getWeekBounds(): { thisWeekStart: string; lastWeekStart: string; lastWeekEnd: string } {
@@ -82,9 +83,11 @@ export default function ProjectDashboardPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [allItems, setAllItems] = useState<AnalysisItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const { showToast } = useToast();
 
-  useEffect(() => {
-    Promise.all([
+  function loadData() {
+    return Promise.all([
       fetch(`/api/projects/${projectId}`).then((r) => r.json()),
       fetch(`/api/items?project_id=${projectId}&review_status=approved`).then((r) => r.json()),
     ])
@@ -92,9 +95,32 @@ export default function ProjectDashboardPage() {
         setProject(proj);
         setAllItems(Array.isArray(items) ? items : []);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    loadData().finally(() => setLoading(false));
   }, [projectId]);
+
+  async function handleScan() {
+    setScanning(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/scan`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Scan failed');
+      }
+      const data = await res.json();
+      showToast(data.message, 'success');
+      // Refresh dashboard data after scan
+      await loadData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Scan failed';
+      showToast(message, 'error');
+    } finally {
+      setScanning(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -148,6 +174,15 @@ export default function ProjectDashboardPage() {
               </Button>
             </Link>
           </RoleGate>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleScan}
+            loading={scanning}
+          >
+            <Radar className="h-4 w-4" />
+            {scanning ? 'Scanning...' : 'Scan for Coverage'}
+          </Button>
           <Link href={`/projects/${projectId}/report`}>
             <Button variant="secondary" size="sm">
               <FileText className="h-4 w-4" />

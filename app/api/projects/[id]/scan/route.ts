@@ -170,15 +170,24 @@ async function runScan(projectId: string) {
 
   const { data: projectFeeds } = await supabaseAdmin
     .from('feeds')
-    .select('id, name, feed_type, url, is_active')
+    .select('id, name, feed_type, url, is_active, last_fetched_at')
     .eq('project_id', projectId)
     .eq('is_active', true);
 
   const feedSources = (projectFeeds && projectFeeds.length > 0)
-    ? projectFeeds.map((f) => ({ type: f.feed_type, url: f.url, id: f.id }))
+    ? projectFeeds.map((f) => ({
+        type: f.feed_type,
+        url: f.url,
+        id: f.id,
+        last_fetched_at: (f as Record<string, unknown>).last_fetched_at as string | null,
+      }))
     : project.boolean_search_terms
-      ? [{ type: 'google_news', url: project.boolean_search_terms, id: null as string | null }]
+      ? [{ type: 'google_news', url: project.boolean_search_terms, id: null as string | null, last_fetched_at: null as string | null }]
       : [];
+
+  // Date cutoff: use last_fetched_at if available, otherwise 6 months ago
+  const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+  const defaultCutoff = new Date(Date.now() - SIX_MONTHS_MS);
 
   if (feedSources.length === 0) {
     return NextResponse.json({
@@ -210,7 +219,17 @@ async function runScan(projectId: string) {
   const feedResults = await Promise.allSettled(
     feedSources.map(async (feedSource) => {
       try {
-        const rawArticles = await fetchFeedArticles(feedSource.type, feedSource.url);
+        // For Google News, append date filter to narrow results
+        let url = feedSource.url;
+        if (feedSource.type === 'google_news') {
+          const cutoff = feedSource.last_fetched_at
+            ? new Date(feedSource.last_fetched_at)
+            : defaultCutoff;
+          const afterDate = cutoff.toISOString().split('T')[0];
+          url = `${feedSource.url} after:${afterDate}`;
+        }
+
+        const rawArticles = await fetchFeedArticles(feedSource.type, url);
         return { feedSource, articles: rawArticles };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Feed fetch failed';
@@ -235,7 +254,16 @@ async function runScan(projectId: string) {
 
     if (error) result.errors.push(error);
 
+    // Filter out articles older than cutoff date
+    const cutoff = feedSource.last_fetched_at
+      ? new Date(feedSource.last_fetched_at)
+      : defaultCutoff;
+
     for (const article of articles) {
+      if (article.published_at) {
+        const pubDate = new Date(article.published_at);
+        if (pubDate < cutoff) continue;
+      }
       allArticles.push({ feedId: feedSource.id, article });
     }
 

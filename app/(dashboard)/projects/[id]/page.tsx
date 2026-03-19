@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ProjectAlertBadge } from '@/components/ui/AlertBadge';
 import { Badge } from '@/components/ui/Badge';
+import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import { RoleGate } from '@/components/ui/RoleGate';
@@ -82,6 +83,28 @@ function aggregateVoices(items: AnalysisItem[]): Array<{ name: string; count: nu
 // ─── Page tabs ───────────────────────────────────────────────────────
 
 type PageTab = 'dashboard' | 'review' | 'feeds';
+type DashboardPeriod = '7d' | '30d' | '3m' | 'all';
+
+const PERIOD_OPTIONS = [
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '3m', label: 'Last 3 months' },
+  { value: 'all', label: 'All time' },
+];
+
+function getPeriodCutoff(period: DashboardPeriod): Date | null {
+  const now = new Date();
+  switch (period) {
+    case '7d':
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case '30d':
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case '3m':
+      return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    case 'all':
+      return null;
+  }
+}
 
 // ─── Analysis item display ───────────────────────────────────────────
 
@@ -157,6 +180,7 @@ export default function ProjectDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [activeTab, setActiveTab] = useState<PageTab>('review');
+  const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>('7d');
   const [lastScanStats, setLastScanStats] = useState<{
     articles_found: number;
     articles_fetched: number;
@@ -266,6 +290,18 @@ export default function ProjectDashboardPage() {
 
   const { thisWeekStart, lastWeekStart, lastWeekEnd } = getWeekBounds();
 
+  // Items filtered by selectable period, sorted newest first
+  const periodCutoff = getPeriodCutoff(dashboardPeriod);
+  const filteredItems = useMemo(() => {
+    const items = periodCutoff
+      ? allItems.filter((i) => new Date(i.created_at) >= periodCutoff)
+      : allItems;
+    return [...items].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [allItems, periodCutoff]);
+
+  // Week-based items for the stats cards (always compare this week vs last week)
   const thisWeekItems = allItems.filter(
     (i) => new Date(i.created_at) >= new Date(thisWeekStart)
   );
@@ -276,10 +312,10 @@ export default function ProjectDashboardPage() {
   );
 
   const { trend, thisWeekPct, lastWeekPct } = calculateSentimentTrend(thisWeekItems, lastWeekItems);
-  const voices = aggregateVoices(thisWeekItems);
-  const actionItems = thisWeekItems.filter((i) => i.alert_level === 'Action Required');
-  const projectSpecificItems = thisWeekItems.filter((i) => i.match_type === 'project_specific');
-  const areaIntelItems = thisWeekItems.filter((i) => i.match_type !== 'project_specific');
+  const voices = aggregateVoices(filteredItems);
+  const actionItems = filteredItems.filter((i) => i.alert_level === 'Action Required');
+  const projectSpecificItems = filteredItems.filter((i) => i.match_type === 'project_specific');
+  const areaIntelItems = filteredItems.filter((i) => i.match_type !== 'project_specific');
   const hasData = allItems.length > 0;
 
   // ─── Render ──────────────────────────────────────────────────────
@@ -436,6 +472,20 @@ export default function ProjectDashboardPage() {
             </Card>
           ) : (
             <div className="space-y-6">
+              {/* Period filter */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} in selected period
+                </p>
+                <div className="w-44">
+                  <Select
+                    options={PERIOD_OPTIONS}
+                    value={dashboardPeriod}
+                    onChange={(e) => setDashboardPeriod(e.target.value as DashboardPeriod)}
+                  />
+                </div>
+              </div>
+
               <ActionItems items={actionItems} />
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -450,11 +500,11 @@ export default function ProjectDashboardPage() {
 
               <Card>
                 <CardHeader
-                  title="Project Coverage This Week"
+                  title="Project Coverage"
                   description={`${projectSpecificItems.length} item${projectSpecificItems.length !== 1 ? 's' : ''} directly mentioning this project`}
                 />
                 {projectSpecificItems.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-4">No project-specific mentions this week</p>
+                  <p className="text-sm text-gray-500 py-4">No project-specific mentions in this period</p>
                 ) : (
                   <div className="space-y-3">
                     {projectSpecificItems.map((item) => (
@@ -466,11 +516,11 @@ export default function ProjectDashboardPage() {
 
               <Card>
                 <CardHeader
-                  title="Area Intelligence This Week"
+                  title="Area Intelligence"
                   description={`${areaIntelItems.length} item${areaIntelItems.length !== 1 ? 's' : ''} from the wider area`}
                 />
                 {areaIntelItems.length === 0 ? (
-                  <p className="text-sm text-gray-500 py-4">No area intelligence this week</p>
+                  <p className="text-sm text-gray-500 py-4">No area intelligence in this period</p>
                 ) : (
                   <div className="space-y-3">
                     {areaIntelItems.map((item) => (

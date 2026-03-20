@@ -65,16 +65,12 @@ export async function POST(req: NextRequest) {
   const userId = await ensureUserInSupabase();
   const body = await req.json();
 
-  if (!body.planning_reference?.trim()) {
-    return NextResponse.json({ error: 'Planning reference is required' }, { status: 400 });
-  }
-
   const { data, error } = await supabaseAdmin
     .from('projects')
     .insert({
       client_name: body.client_name,
       site_name: body.site_name,
-      planning_reference: body.planning_reference,
+      planning_reference: body.planning_reference ?? '',
       lpa: body.lpa,
       boolean_search_terms: body.boolean_search_terms,
       assigned_lead_id: body.assigned_lead_id || null,

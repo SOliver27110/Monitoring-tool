@@ -137,7 +137,6 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
         <Input
           id="planning_reference"
           label="Planning Reference"
-          required
           value={form.planning_reference}
           onChange={(e) => updateField('planning_reference', e.target.value)}
           placeholder="e.g. 24/01234/FUL"

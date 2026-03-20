@@ -87,7 +87,7 @@ export function ProjectTable() {
             onChange={(e) => setLpaFilter(e.target.value)}
           />
         </div>
-        <RoleGate allowedRoles={['admin', 'project_lead']}>
+        <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
           <Link href="/projects/new">
             <Button size="md">
               <Plus className="h-4 w-4" />
@@ -116,7 +116,7 @@ export function ProjectTable() {
           icon={<FolderKanban className="h-12 w-12" />}
           action={
             !search && !alertFilter && !lpaFilter ? (
-              <RoleGate allowedRoles={['admin', 'project_lead']}>
+              <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
                 <Link href="/projects/new">
                   <Button>
                     <Plus className="h-4 w-4" />
@@ -187,7 +187,7 @@ export function ProjectTable() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <RoleGate allowedRoles={['admin', 'project_lead']}>
+                      <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
                         <Link
                           href={`/projects/${project.id}/edit`}
                           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-brand-purple"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { ensureUserInSupabase, requireRole } from '@/lib/auth';
+import { ensureUserInSupabase } from '@/lib/auth';
 import { generateReportContent } from '@/lib/anthropic';
 import type { ReportContent, SentimentTrend } from '@/lib/types';
 
@@ -42,12 +42,6 @@ function calculateSentimentTrend(
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    requireRole(['admin', 'project_lead']);
-  } catch {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
   const userId = await ensureUserInSupabase();
   const body = await req.json();
   const projectId = body.project_id as string;

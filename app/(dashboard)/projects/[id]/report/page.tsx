@@ -100,7 +100,7 @@ export default function ProjectReportPage() {
             {project.client_name} &mdash; {project.site_name}
           </p>
         </div>
-        <RoleGate allowedRoles={['admin', 'project_lead']}>
+        <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
           <Button onClick={generateReport} loading={generating}>
             <FileText className="h-4 w-4" />
             Generate Weekly Report
@@ -115,7 +115,7 @@ export default function ProjectReportPage() {
             description="Generate your first weekly report to see it here. Reports are locked on generation and cannot be edited."
             icon={<FileText className="h-12 w-12" />}
             action={
-              <RoleGate allowedRoles={['admin', 'project_lead']}>
+              <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
                 <Button onClick={generateReport} loading={generating}>
                   Generate Report
                 </Button>

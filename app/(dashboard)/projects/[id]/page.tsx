@@ -384,7 +384,7 @@ export default function ProjectDashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <ProjectAlertBadge level={project.alert_level as AlertLevel} />
-          <RoleGate allowedRoles={['admin', 'project_lead']}>
+          <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
             <Link href={`/projects/${projectId}/edit`}>
               <Button variant="secondary" size="sm">
                 <Pencil className="h-4 w-4" />
@@ -401,7 +401,7 @@ export default function ProjectDashboardPage() {
             <Radar className="h-4 w-4" />
             {scanning ? 'Scanning...' : 'Scan for Coverage'}
           </Button>
-          <RoleGate allowedRoles={['admin', 'project_lead']}>
+          <RoleGate allowedRoles={['admin', 'project_lead', 'team_member']}>
             <Button
               variant="secondary"
               size="sm"

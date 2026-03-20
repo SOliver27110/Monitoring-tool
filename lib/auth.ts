@@ -31,8 +31,7 @@ export function requireRole(allowedRoles: UserRole[]): UserRole {
 }
 
 export function canEdit(): boolean {
-  const role = getUserRole();
-  return role === 'admin' || role === 'project_lead';
+  return true;
 }
 
 export async function ensureUserInSupabase(): Promise<string> {

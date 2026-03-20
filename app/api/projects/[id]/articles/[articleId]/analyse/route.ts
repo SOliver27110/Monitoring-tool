@@ -7,6 +7,11 @@ import { ensureUserInSupabase } from '@/lib/auth';
 
 export const maxDuration = 45;
 
+function isConfirmedMatch(matchedBy: string | null): boolean {
+  if (!matchedBy) return false;
+  return matchedBy.includes('site name') || matchedBy.includes('client name');
+}
+
 /**
  * POST /api/projects/[id]/articles/[articleId]/analyse
  * Analyse a single fetched article with Claude Haiku, create an analysis_item,
@@ -139,7 +144,7 @@ export async function POST(
         key_entities: analysis.key_entities as unknown as Record<string, string[]>,
         is_new_information: analysis.is_new_information,
         new_information_detail: analysis.new_information_detail,
-        match_confidence: analysis.match_confidence,
+        match_confidence: isConfirmedMatch(article.matched_by) ? 'definite' : analysis.match_confidence,
         planning_stage: analysis.planning_stage_mentioned,
         themes: analysis.themes,
         has_full_text: extractionMeta.has_full_text,

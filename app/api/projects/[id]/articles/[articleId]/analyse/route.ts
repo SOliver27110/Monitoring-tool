@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { analyseContent, NEEDS_REVIEW_THRESHOLD } from '@/lib/anthropic';
+import { extractArticleText } from '@/lib/article-extractor';
+import { waitForDomain } from '@/lib/rate-limiter';
 import { ensureUserInSupabase } from '@/lib/auth';
 
-export const maxDuration = 30;
+export const maxDuration = 45;
 
 /**
  * POST /api/projects/[id]/articles/[articleId]/analyse
@@ -65,10 +67,25 @@ export async function POST(
     return NextResponse.json({ message: 'Article dismissed' });
   }
 
-  // Approve: analyse with Haiku then create analysis_item
-  const text = [article.title, article.excerpt].filter(Boolean).join('\n\n').trim();
+  // Fetch project context for enriched analysis
+  const { data: projectRow } = await supabaseAdmin
+    .from('projects')
+    .select('site_name, planning_reference, client_name')
+    .eq('id', projectId)
+    .single();
 
-  if (!text) {
+  const projectContext = projectRow
+    ? {
+        site_name: projectRow.site_name,
+        planning_reference: projectRow.planning_reference,
+        client_name: projectRow.client_name,
+      }
+    : undefined;
+
+  // Approve: extract full text, then analyse with Haiku
+  const fallbackText = [article.title, article.excerpt].filter(Boolean).join('\n\n').trim();
+
+  if (!fallbackText) {
     return NextResponse.json(
       { error: 'Article has no content to analyse' },
       { status: 400 }
@@ -76,14 +93,32 @@ export async function POST(
   }
 
   try {
-    const analysis = await analyseContent(text);
+    // Attempt full article text extraction
+    let analyseText = fallbackText;
+    let extractionMeta = { has_full_text: false, author: null as string | null, image_url: null as string | null, word_count: 0 };
+
+    if (article.url) {
+      await waitForDomain(article.url);
+      const extracted = await extractArticleText(article.url, article.excerpt);
+      if (extracted.has_full_text && extracted.text) {
+        analyseText = extracted.text;
+      }
+      extractionMeta = {
+        has_full_text: extracted.has_full_text,
+        author: extracted.author,
+        image_url: extracted.image_url,
+        word_count: extracted.word_count,
+      };
+    }
+
+    const analysis = await analyseContent(analyseText, projectContext);
     const needsReview = analysis.confidence_score < NEEDS_REVIEW_THRESHOLD;
 
     const { data: analysisItem, error: insertErr } = await supabaseAdmin
       .from('analysis_items')
       .insert({
         project_id: projectId,
-        source_text: text,
+        source_text: analyseText,
         source_type: 'news_article',
         source_url: article.url,
         summary: analysis.summary,
@@ -101,6 +136,16 @@ export async function POST(
         match_reason: article.matched_by,
         confidence_score: analysis.confidence_score,
         needs_review: needsReview,
+        key_entities: analysis.key_entities as unknown as Record<string, string[]>,
+        is_new_information: analysis.is_new_information,
+        new_information_detail: analysis.new_information_detail,
+        match_confidence: analysis.match_confidence,
+        planning_stage: analysis.planning_stage_mentioned,
+        themes: analysis.themes,
+        has_full_text: extractionMeta.has_full_text,
+        author: extractionMeta.author,
+        image_url: extractionMeta.image_url,
+        word_count: extractionMeta.word_count,
         created_by: userId,
       })
       .select('*')

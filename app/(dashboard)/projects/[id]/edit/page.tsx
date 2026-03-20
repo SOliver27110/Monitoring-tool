@@ -26,6 +26,7 @@ export default function EditProjectPage() {
           planning_reference: project.planning_reference,
           lpa: project.lpa,
           boolean_search_terms: project.boolean_search_terms,
+          exclusion_terms: project.exclusion_terms ?? '',
           assigned_lead_id: project.assigned_lead_id,
           application_stage: project.application_stage,
           key_dates: project.key_dates ?? {},

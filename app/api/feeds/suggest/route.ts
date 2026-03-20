@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import Anthropic from '@anthropic-ai/sdk';
 import Parser from 'rss-parser';
+import { buildProjectQuery, buildAreaIntelligenceQuery } from '@/lib/google-news-query';
 
 const rssParser = new Parser();
 
@@ -222,9 +223,40 @@ Suggest Google News search queries for monitoring planning-related media coverag
       // If Sonnet's response is malformed, proceed with just curated feeds
     }
 
-    // 5. Combine: verified RSS first, then google_news, then unverified RSS last
+    // 5. Generate deterministic Google News queries from project fields
+    const deterministicSuggestions: FeedSuggestion[] = [];
+
+    const projectQuery = buildProjectQuery({
+      planning_reference: planning_reference ?? '',
+      site_name: site_name ?? '',
+      client_name: client_name ?? '',
+      exclusion_terms: '',
+    });
+    if (projectQuery) {
+      deterministicSuggestions.push({
+        name: `Project Search: ${site_name || planning_reference || 'Project'}`,
+        url: projectQuery,
+        feed_type: 'google_news',
+        verified: null,
+      });
+    }
+
+    const areaQuery = buildAreaIntelligenceQuery({
+      site_name: site_name ?? '',
+      lpa: lpa ?? '',
+    });
+    if (areaQuery) {
+      deterministicSuggestions.push({
+        name: `Area Intelligence: ${site_name || lpa}`,
+        url: areaQuery,
+        feed_type: 'google_news',
+        verified: null,
+      });
+    }
+
+    // 6. Combine: verified RSS first, then deterministic queries, then LLM suggestions, then unverified RSS
     const rssResults = validationResults as FeedSuggestion[];
-    const allResults = [...rssResults, ...googleNewsSuggestions];
+    const allResults = [...rssResults, ...deterministicSuggestions, ...googleNewsSuggestions];
 
     allResults.sort((a, b) => {
       const order = (v: boolean | null) => (v === true ? 0 : v === null ? 1 : 2);

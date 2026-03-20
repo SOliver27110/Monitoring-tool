@@ -42,6 +42,7 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
       planning_reference: '',
       lpa: '',
       boolean_search_terms: '',
+      exclusion_terms: '',
       assigned_lead_id: null,
       application_stage: 'Pre-app',
       key_dates: {},
@@ -160,6 +161,18 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
           />
           <p className="mt-1 text-xs text-gray-400">
             Auto-generated. Edit to refine your monitoring search query.
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <Input
+            id="exclusion_terms"
+            label="Exclusion Terms"
+            value={form.exclusion_terms}
+            onChange={(e) => updateField('exclusion_terms', e.target.value)}
+            placeholder="e.g. football, cricket, rugby"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Comma-separated terms to exclude from Google News searches.
           </p>
         </div>
         <Select

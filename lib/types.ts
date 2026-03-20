@@ -36,6 +36,7 @@ export interface Project {
   planning_reference: string;
   lpa: string;
   boolean_search_terms: string;
+  exclusion_terms: string;
   assigned_lead_id: string | null;
   assigned_lead?: AppUser;
   application_stage: ApplicationStage;
@@ -52,6 +53,7 @@ export interface ProjectFormData {
   planning_reference: string;
   lpa: string;
   boolean_search_terms: string;
+  exclusion_terms: string;
   assigned_lead_id: string | null;
   application_stage: ApplicationStage;
   key_dates: KeyDates;
@@ -73,6 +75,16 @@ export type ReviewStatus = 'unreviewed' | 'approved' | 'dismissed';
 
 export type MatchType = 'project_specific' | 'area_intelligence';
 
+export type MatchConfidence = 'definite' | 'likely' | 'tangential';
+
+export interface KeyEntities {
+  councillors: string[];
+  journalists: string[];
+  opposition_groups: string[];
+  supporters: string[];
+  organisations: string[];
+}
+
 export interface AnalysisResult {
   summary: string;
   sentiment: Sentiment;
@@ -81,6 +93,12 @@ export interface AnalysisResult {
   key_themes: string[];
   recommended_action: string;
   confidence_score: number;
+  key_entities: KeyEntities;
+  is_new_information: boolean;
+  new_information_detail: string | null;
+  match_confidence: MatchConfidence;
+  planning_stage_mentioned: string | null;
+  themes: string[];
 }
 
 export interface AnalysisItem {
@@ -103,6 +121,16 @@ export interface AnalysisItem {
   match_reason: string | null;
   confidence_score: number | null;
   needs_review: boolean;
+  key_entities: KeyEntities;
+  is_new_information: boolean;
+  new_information_detail: string | null;
+  match_confidence: MatchConfidence | null;
+  planning_stage: string | null;
+  themes: string[];
+  has_full_text: boolean;
+  author: string | null;
+  image_url: string | null;
+  word_count: number | null;
   created_by: string;
   created_at: string;
   updated_at: string;

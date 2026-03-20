@@ -119,6 +119,16 @@ function AnalysisItemCard({
 }) {
   const isActionRequired = item.alert_level === 'Action Required';
 
+  const entities = item.key_entities ?? { councillors: [], journalists: [], opposition_groups: [], supporters: [], organisations: [] };
+  const entityGroups = [
+    { label: 'Councillors', items: entities.councillors ?? [] },
+    { label: 'Journalists', items: entities.journalists ?? [] },
+    { label: 'Opposition Groups', items: entities.opposition_groups ?? [] },
+    { label: 'Supporters', items: entities.supporters ?? [] },
+    { label: 'Organisations', items: entities.organisations ?? [] },
+  ].filter((g) => g.items.length > 0);
+  const totalEntities = entityGroups.reduce((sum, g) => sum + g.items.length, 0);
+
   return (
     <div className={`rounded-lg border p-3 ${isActionRequired ? 'border-l-4 border-l-red-500 border-gray-200' : 'border-gray-100'}`}>
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -135,13 +145,44 @@ function AnalysisItemCard({
         {isActionRequired && (
           <Badge variant="danger">Action Required</Badge>
         )}
+        {item.match_confidence && (
+          <Badge
+            variant={
+              item.match_confidence === 'definite' ? 'success' :
+              item.match_confidence === 'likely' ? 'warning' : 'default'
+            }
+          >
+            {item.match_confidence.charAt(0).toUpperCase() + item.match_confidence.slice(1)}
+          </Badge>
+        )}
+        {item.is_new_information && (
+          <Badge variant="danger">NEW</Badge>
+        )}
+        {item.planning_stage && (
+          <Badge variant="purple">{item.planning_stage}</Badge>
+        )}
         <span className="text-xs text-gray-400">
           {new Date(item.created_at).toLocaleDateString('en-GB')}
         </span>
+        {item.has_full_text && (
+          <span className="text-[10px] text-gray-400">Full text</span>
+        )}
       </div>
       <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
+      {item.is_new_information && item.new_information_detail && (
+        <p className="text-xs text-red-600 mb-1">{item.new_information_detail}</p>
+      )}
       {item.recommended_action && (
         <p className="text-xs text-gray-500 italic mb-1.5">{item.recommended_action}</p>
+      )}
+      {item.themes && item.themes.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {item.themes.map((theme, i) => (
+            <span key={i} className="text-[10px] bg-gray-50 text-gray-500 rounded px-1.5 py-0.5">
+              {theme}
+            </span>
+          ))}
+        </div>
       )}
       <div className="flex items-center gap-3">
         {item.notable_voices.length > 0 && (
@@ -165,6 +206,21 @@ function AnalysisItemCard({
           </a>
         )}
       </div>
+      {totalEntities > 0 && (
+        <details className="mt-2">
+          <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+            Key entities ({totalEntities})
+          </summary>
+          <div className="mt-1 space-y-1">
+            {entityGroups.map((group) => (
+              <div key={group.label}>
+                <span className="text-[10px] font-medium text-gray-500">{group.label}: </span>
+                <span className="text-[10px] text-gray-600">{group.items.join(', ')}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { searchArticles } from '@/lib/google-news-rss';
+import { buildProjectQuery, buildAreaIntelligenceQuery } from '@/lib/google-news-query';
 import { ensureUserInSupabase } from '@/lib/auth';
 import Parser from 'rss-parser';
 import { createHash } from 'crypto';
@@ -160,7 +161,7 @@ export async function POST(
 async function runScan(projectId: string) {
   const { data: project, error: projErr } = await supabaseAdmin
     .from('projects')
-    .select('id, client_name, site_name, planning_reference, lpa, boolean_search_terms')
+    .select('id, client_name, site_name, planning_reference, lpa, boolean_search_terms, exclusion_terms')
     .eq('id', projectId)
     .single();
 
@@ -174,16 +175,55 @@ async function runScan(projectId: string) {
     .eq('project_id', projectId)
     .eq('is_active', true);
 
-  const feedSources = (projectFeeds && projectFeeds.length > 0)
-    ? projectFeeds.map((f) => ({
-        type: f.feed_type,
-        url: f.url,
-        id: f.id,
-        last_fetched_at: (f as Record<string, unknown>).last_fetched_at as string | null,
-      }))
-    : project.boolean_search_terms
-      ? [{ type: 'google_news', url: project.boolean_search_terms, id: null as string | null, last_fetched_at: null as string | null }]
-      : [];
+  interface FeedSource {
+    type: string;
+    url: string;
+    id: string | null;
+    last_fetched_at: string | null;
+    isAreaIntel?: boolean;
+  }
+
+  let feedSources: FeedSource[];
+
+  if (projectFeeds && projectFeeds.length > 0) {
+    feedSources = projectFeeds.map((f) => ({
+      type: f.feed_type,
+      url: f.url,
+      id: f.id,
+      last_fetched_at: (f as Record<string, unknown>).last_fetched_at as string | null,
+    }));
+  } else {
+    // Generate smart queries from project fields
+    const seen = new Set<string>();
+    feedSources = [];
+
+    // 1. Backward compat: existing boolean search terms
+    if (project.boolean_search_terms) {
+      feedSources.push({ type: 'google_news', url: project.boolean_search_terms, id: null, last_fetched_at: null });
+      seen.add(project.boolean_search_terms);
+    }
+
+    // 2. Smart project-specific query
+    const projectQuery = buildProjectQuery({
+      planning_reference: project.planning_reference,
+      site_name: project.site_name,
+      client_name: project.client_name,
+      exclusion_terms: project.exclusion_terms ?? '',
+    });
+    if (projectQuery && !seen.has(projectQuery)) {
+      feedSources.push({ type: 'google_news', url: projectQuery, id: null, last_fetched_at: null });
+      seen.add(projectQuery);
+    }
+
+    // 3. Area intelligence query
+    const areaQuery = buildAreaIntelligenceQuery({
+      site_name: project.site_name,
+      lpa: project.lpa,
+    });
+    if (areaQuery && !seen.has(areaQuery)) {
+      feedSources.push({ type: 'google_news', url: areaQuery, id: null, last_fetched_at: null, isAreaIntel: true });
+    }
+  }
 
   // Date cutoff: use last_fetched_at if available, otherwise 6 months ago
   const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
@@ -219,9 +259,9 @@ async function runScan(projectId: string) {
   const feedResults = await Promise.allSettled(
     feedSources.map(async (feedSource) => {
       try {
-        // For Google News, append date filter to narrow results
+        // For Google News, append date filter unless query already has when: filter
         let url = feedSource.url;
-        if (feedSource.type === 'google_news') {
+        if (feedSource.type === 'google_news' && !feedSource.url.includes('when:')) {
           const cutoff = feedSource.last_fetched_at
             ? new Date(feedSource.last_fetched_at)
             : defaultCutoff;
@@ -238,7 +278,7 @@ async function runScan(projectId: string) {
     })
   );
 
-  const allArticles: Array<{ feedId: string | null; article: RawArticle }> = [];
+  const allArticles: Array<{ feedId: string | null; article: RawArticle; isAreaIntel?: boolean }> = [];
 
   for (const feedResult of feedResults) {
     if (feedResult.status === 'rejected') {
@@ -247,7 +287,7 @@ async function runScan(projectId: string) {
     }
 
     const { feedSource, articles, error } = feedResult.value as {
-      feedSource: typeof feedSources[0];
+      feedSource: FeedSource;
       articles: RawArticle[];
       error?: string;
     };
@@ -264,7 +304,7 @@ async function runScan(projectId: string) {
         const pubDate = new Date(article.published_at);
         if (pubDate < cutoff) continue;
       }
-      allArticles.push({ feedId: feedSource.id, article });
+      allArticles.push({ feedId: feedSource.id, article, isAreaIntel: feedSource.isAreaIntel });
     }
 
     if (feedSource.id) {
@@ -278,7 +318,7 @@ async function runScan(projectId: string) {
   result.articles_found = allArticles.length;
 
   // Store articles — no analysis, just classify and save
-  for (const { feedId, article } of allArticles) {
+  for (const { feedId, article, isAreaIntel } of allArticles) {
     const guid = makeGuid(article.url, article.title);
 
     if (existingGuids.has(guid)) {
@@ -294,7 +334,10 @@ async function runScan(projectId: string) {
       continue;
     }
 
-    const { match_type, match_reason } = classifyMatch(text, project);
+    // Articles from the area intel feed are always area_intelligence
+    const { match_type, match_reason } = isAreaIntel
+      ? { match_type: 'area_intelligence' as const, match_reason: 'Area intelligence feed' }
+      : classifyMatch(text, project);
     const status = match_type === 'project_specific' ? 'matched' : 'pending';
 
     const { error: fetchErr } = await supabaseAdmin

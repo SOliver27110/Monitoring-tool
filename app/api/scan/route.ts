@@ -37,6 +37,14 @@ export async function POST() {
   ];
   const LPA_STOP_WORDS = ['council', 'borough', 'district', 'county', 'city', 'authority'];
 
+  function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function wordMatch(haystack: string, term: string): boolean {
+    return new RegExp('\\b' + escapeRegex(term) + '\\b', 'i').test(haystack);
+  }
+
   const results: Array<{
     project_id: string;
     project_name: string;
@@ -84,25 +92,27 @@ export async function POST() {
 
         if (!text.trim()) continue;
 
-        // Local relevance filter: if the client name doesn't appear in the
-        // article but the LPA does, require a planning-context keyword too.
+        // Local relevance filter: require EITHER the client name (word-boundary)
+        // OR (LPA name + a planning-context keyword). Articles matching neither
+        // the client nor the LPA are skipped — they are generic area intel, not
+        // project-specific matches.
         const lower = text.toLowerCase();
         const clientAppears =
           project.client_name &&
-          lower.includes(project.client_name.toLowerCase());
+          wordMatch(lower, project.client_name.toLowerCase());
         if (!clientAppears) {
           const lpaShort = project.lpa
             .split(' ')
             .filter((w: string) => !LPA_STOP_WORDS.includes(w.toLowerCase()))
             .join(' ')
             .trim();
-          const lpaAppears = lpaShort && lower.includes(lpaShort.toLowerCase());
-          if (lpaAppears) {
-            const hasPlanningContext = PLANNING_CONTEXT_WORDS.some((w) =>
-              lower.includes(w)
-            );
-            if (!hasPlanningContext) continue;
-          }
+          const lpaAppears = lpaShort && wordMatch(lower, lpaShort.toLowerCase());
+          if (!lpaAppears) continue;
+
+          const hasPlanningContext = PLANNING_CONTEXT_WORDS.some((w) =>
+            wordMatch(lower, w)
+          );
+          if (!hasPlanningContext) continue;
         }
 
         try {

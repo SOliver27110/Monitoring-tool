@@ -28,11 +28,17 @@ export async function POST(
       reviewed_at: new Date().toISOString(),
     })
     .eq('id', params.id)
+    .eq('review_status', 'unreviewed')
     .select()
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // PGRST116 = no rows returned, meaning the item isn't in 'unreviewed' state
+    const status = error.code === 'PGRST116' ? 409 : 500;
+    const message = error.code === 'PGRST116'
+      ? 'Item is not in a reviewable state'
+      : error.message;
+    return NextResponse.json({ error: message }, { status });
   }
 
   return NextResponse.json(data);

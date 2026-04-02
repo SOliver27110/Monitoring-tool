@@ -72,7 +72,7 @@ export function QueueList() {
       if (!res.ok) throw new Error('Review failed');
 
       setItems((prev) => prev.filter((_, i) => i !== index));
-      setSelectedIndex((prev) => Math.min(prev, items.length - 2));
+      setSelectedIndex((prev) => Math.max(0, Math.min(prev, items.length - 2)));
       showToast(
         action === 'approve' ? 'Item approved' : 'Item dismissed',
         action === 'approve' ? 'success' : 'info'

@@ -1,29 +1,40 @@
 -- Heyford Park minimal build
 -- Adds: optional planning reference, client-level search terms,
 -- "Ongoing Media Monitoring" application stage, and match_type tag on analysis_items.
+--
+-- Idempotent: safe to re-run. Uses IF (NOT) EXISTS and catalog checks so a partial
+-- prior run can be completed without manual intervention.
 
--- Before running, confirm the CHECK constraint name on projects.application_stage with:
---   SELECT conname FROM pg_constraint
---   WHERE conrelid = 'projects'::regclass AND contype = 'c';
--- If the name differs from projects_application_stage_check, update the DROP below.
-
--- Allow projects without a planning reference (ongoing media briefs)
+-- 1. Allow projects without a planning reference (idempotent)
 ALTER TABLE projects ALTER COLUMN planning_reference DROP NOT NULL;
 
--- New: client-level search terms, alongside the existing project-level terms
-ALTER TABLE projects ADD COLUMN client_search_terms text;
+-- 2. Add client_search_terms column (idempotent)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_search_terms text;
 
--- Extend application_stage to include ongoing monitoring briefs
-ALTER TABLE projects DROP CONSTRAINT projects_application_stage_check;
+-- 3. Swap the application_stage CHECK constraint (idempotent)
+ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_application_stage_check;
 ALTER TABLE projects ADD CONSTRAINT projects_application_stage_check
   CHECK (application_stage IN (
     'Pre-app', 'Submitted', 'Consultation', 'Committee',
     'Appeal', 'Approved', 'Refused', 'Ongoing Media Monitoring'
   ));
 
--- Tag each analysis item with which query produced it
-ALTER TABLE analysis_items
-  ADD COLUMN match_type text
-    CHECK (match_type IS NULL OR match_type IN ('project', 'client'));
+-- 4. Add match_type column on analysis_items (idempotent)
+ALTER TABLE analysis_items ADD COLUMN IF NOT EXISTS match_type text;
 
-CREATE INDEX idx_analysis_items_match_type ON analysis_items(match_type);
+-- 5. Add the match_type CHECK constraint if it isn't there yet
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'analysis_items'::regclass
+      AND conname = 'analysis_items_match_type_check'
+  ) THEN
+    ALTER TABLE analysis_items
+      ADD CONSTRAINT analysis_items_match_type_check
+        CHECK (match_type IS NULL OR match_type IN ('project', 'client'));
+  END IF;
+END $$;
+
+-- 6. Index on match_type (idempotent)
+CREATE INDEX IF NOT EXISTS idx_analysis_items_match_type ON analysis_items(match_type);

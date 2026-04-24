@@ -57,6 +57,21 @@ function normaliseAlertLevel(raw: unknown): ItemAlertLevel {
   throw new Error(`Unrecognised alert_level from model: ${JSON.stringify(raw)}`);
 }
 
+function extractJson(raw: string): string {
+  // Strip common markdown fence variants: ```json ... ``` or ``` ... ```
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+
+  // Fall back to the first top-level { ... } block.
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    return raw.slice(first, last + 1);
+  }
+
+  return raw.trim();
+}
+
 export async function analyseContent(text: string): Promise<AnalysisResult> {
   const client = getClient();
   const truncated = text.length > MAX_INPUT_CHARS
@@ -80,11 +95,14 @@ export async function analyseContent(text: string): Promise<AnalysisResult> {
     .map((block) => block.text)
     .join('');
 
+  const jsonText = extractJson(responseText);
+
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(responseText) as Record<string, unknown>;
+    parsed = JSON.parse(jsonText) as Record<string, unknown>;
   } catch {
-    throw new Error('Analysis failed — model did not return valid JSON.');
+    const preview = responseText.slice(0, 200).replace(/\s+/g, ' ');
+    throw new Error(`Analysis failed — model did not return valid JSON. Got: ${preview}`);
   }
 
   if (!parsed.summary || !parsed.recommended_action) {

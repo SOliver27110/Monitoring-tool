@@ -22,19 +22,12 @@ ALTER TABLE projects ADD CONSTRAINT projects_application_stage_check
 -- 4. Add match_type column on analysis_items (idempotent)
 ALTER TABLE analysis_items ADD COLUMN IF NOT EXISTS match_type text;
 
--- 5. Add the match_type CHECK constraint if it isn't there yet
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'analysis_items'::regclass
-      AND conname = 'analysis_items_match_type_check'
-  ) THEN
-    ALTER TABLE analysis_items
-      ADD CONSTRAINT analysis_items_match_type_check
-        CHECK (match_type IS NULL OR match_type IN ('project', 'client'));
-  END IF;
-END $$;
+-- 5. Ensure the match_type CHECK constraint has the correct allowed values.
+-- Drop unconditionally in case an earlier branch created one with different
+-- values (e.g. 'project_specific' / 'area_intelligence').
+ALTER TABLE analysis_items DROP CONSTRAINT IF EXISTS analysis_items_match_type_check;
+ALTER TABLE analysis_items ADD CONSTRAINT analysis_items_match_type_check
+  CHECK (match_type IS NULL OR match_type IN ('project', 'client'));
 
 -- 6. Index on match_type (idempotent)
 CREATE INDEX IF NOT EXISTS idx_analysis_items_match_type ON analysis_items(match_type);

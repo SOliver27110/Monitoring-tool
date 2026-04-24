@@ -23,6 +23,7 @@ const sentimentVariant: Record<Sentiment, 'success' | 'default' | 'danger' | 'wa
 
 export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: QueueItemProps) {
   const isActionRequired = item.alert_level === 'Action Required';
+  const notableVoices = item.notable_voices ?? [];
 
   return (
     <div
@@ -36,9 +37,11 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
-              {item.sentiment}
-            </Badge>
+            {item.sentiment && (
+              <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
+                {item.sentiment}
+              </Badge>
+            )}
             <ItemAlertBadge level={item.alert_level as AnalysisItem['alert_level']} />
             {item.project && (
               <Badge variant="purple">
@@ -52,12 +55,12 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
               <Badge variant="default">Client match</Badge>
             )}
           </div>
-          <p className="text-sm text-gray-900 mb-1">{item.summary}</p>
-          <p className="text-xs text-gray-500 italic">{item.recommended_action}</p>
+          <p className="text-sm text-gray-900 mb-1">{item.summary ?? '—'}</p>
+          <p className="text-xs text-gray-500 italic">{item.recommended_action ?? '—'}</p>
 
-          {item.notable_voices.length > 0 && (
+          {notableVoices.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
-              {item.notable_voices.map((voice, i) => (
+              {notableVoices.map((voice, i) => (
                 <span key={i} className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-0.5">
                   {voice}
                 </span>

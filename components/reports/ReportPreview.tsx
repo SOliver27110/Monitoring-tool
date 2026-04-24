@@ -15,6 +15,8 @@ const trendLabel: Record<string, string> = {
 };
 
 export function ReportPreview({ content, generatedAt }: ReportPreviewProps) {
+  const notableVoices = content.notable_voices ?? [];
+  const sourcesReviewed = content.sources_reviewed ?? [];
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
       <div className="border-b border-gray-200 pb-4">
@@ -60,8 +62,8 @@ export function ReportPreview({ content, generatedAt }: ReportPreviewProps) {
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-1">Notable voices</h3>
         <p className="text-sm text-gray-900">
-          {content.notable_voices.length > 0
-            ? content.notable_voices.join(', ')
+          {notableVoices.length > 0
+            ? notableVoices.join(', ')
             : 'None identified this week'}
         </p>
       </div>
@@ -74,7 +76,7 @@ export function ReportPreview({ content, generatedAt }: ReportPreviewProps) {
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-1">Sources reviewed</h3>
         <ul className="text-sm text-gray-900 list-disc list-inside">
-          {content.sources_reviewed.map((source, i) => (
+          {sourcesReviewed.map((source, i) => (
             <li key={i}>{source}</li>
           ))}
         </ul>

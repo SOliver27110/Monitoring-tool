@@ -136,6 +136,8 @@ function trendLabel(trend: string): string {
 }
 
 export function ReportPDF({ content, generatedAt, weekStart, weekEnd }: ReportPDFProps) {
+  const notableVoices = content.notable_voices ?? [];
+  const sourcesReviewed = content.sources_reviewed ?? [];
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -172,8 +174,8 @@ export function ReportPDF({ content, generatedAt, weekStart, weekEnd }: ReportPD
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notable voices</Text>
           <Text style={styles.body}>
-            {content.notable_voices.length > 0
-              ? content.notable_voices.join(', ')
+            {notableVoices.length > 0
+              ? notableVoices.join(', ')
               : 'None identified this week'}
           </Text>
         </View>
@@ -185,7 +187,7 @@ export function ReportPDF({ content, generatedAt, weekStart, weekEnd }: ReportPD
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Sources reviewed</Text>
-          {content.sources_reviewed.map((source, i) => (
+          {sourcesReviewed.map((source, i) => (
             <Text key={i} style={styles.listItem}>
               • {source}
             </Text>

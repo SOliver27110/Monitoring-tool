@@ -106,8 +106,12 @@ export async function POST(req: NextRequest) {
     .gte('created_at', lastWeekStart.toISOString())
     .lte('created_at', lastSunday.toISOString());
 
-  const items = thisWeekItems ?? [];
-  const lastItems = lastWeekItems ?? [];
+  // Defensive: skip rows without completed analysis. After migration 003 ships,
+  // a DB-level .eq('analysis_status', 'complete') filter will make this redundant.
+  const items = (thisWeekItems ?? []).filter(
+    (i) => i.summary != null && i.sentiment != null && i.alert_level != null
+  );
+  const lastItems = (lastWeekItems ?? []).filter((i) => i.sentiment != null);
   const sentimentTrend = calculateSentimentTrend(items, lastItems);
 
   // Aggregate notable voices

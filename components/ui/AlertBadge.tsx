@@ -21,7 +21,7 @@ export function ProjectAlertBadge({ level }: ProjectAlertBadgeProps) {
 }
 
 interface ItemAlertBadgeProps {
-  level: ItemAlertLevel;
+  level: ItemAlertLevel | null | undefined;
 }
 
 const itemAlertConfig: Record<ItemAlertLevel, { className: string }> = {
@@ -31,7 +31,9 @@ const itemAlertConfig: Record<ItemAlertLevel, { className: string }> = {
 };
 
 export function ItemAlertBadge({ level }: ItemAlertBadgeProps) {
+  if (!level) return null;
   const config = itemAlertConfig[level];
+  if (!config) return null;
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.className}`}>
       {level}

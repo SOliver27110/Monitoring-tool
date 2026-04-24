@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole(['admin', 'project_lead']);
+    await requireRole(['admin', 'project_lead']);
   } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

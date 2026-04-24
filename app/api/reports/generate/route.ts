@@ -56,7 +56,7 @@ function calculateSentimentTrend(
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole(['admin', 'project_lead']);
+    await requireRole(['admin', 'project_lead']);
   } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
       ).join('\n');
 
       const userContent = `Project: ${project.client_name} — ${project.site_name}
-Planning ref: ${project.planning_reference}
+Planning ref: ${project.planning_reference ?? 'N/A'}
 LPA: ${project.lpa}
 Stage: ${project.application_stage}
 

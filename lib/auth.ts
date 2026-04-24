@@ -8,20 +8,33 @@ interface SessionClaims {
   };
 }
 
-export function getUserRole(): UserRole {
+export async function getUserRole(): Promise<UserRole> {
   const { sessionClaims } = auth();
   const claims = sessionClaims as SessionClaims | null;
-  const role = claims?.metadata?.role;
+  const sessionRole = claims?.metadata?.role;
 
-  if (role === 'admin' || role === 'project_lead' || role === 'team_member') {
-    return role;
+  if (sessionRole === 'admin' || sessionRole === 'project_lead' || sessionRole === 'team_member') {
+    return sessionRole;
+  }
+
+  // Fallback for when the JWT session token doesn't expose metadata claims:
+  // read publicMetadata directly off the Clerk user.
+  try {
+    const user = await currentUser();
+    const meta = user?.publicMetadata as Record<string, unknown> | undefined;
+    const pubRole = meta?.role;
+    if (pubRole === 'admin' || pubRole === 'project_lead' || pubRole === 'team_member') {
+      return pubRole;
+    }
+  } catch {
+    // fall through to default
   }
 
   return 'team_member';
 }
 
-export function requireRole(allowedRoles: UserRole[]): UserRole {
-  const role = getUserRole();
+export async function requireRole(allowedRoles: UserRole[]): Promise<UserRole> {
+  const role = await getUserRole();
 
   if (!allowedRoles.includes(role)) {
     throw new Error(`Forbidden: role '${role}' not in [${allowedRoles.join(', ')}]`);
@@ -30,8 +43,8 @@ export function requireRole(allowedRoles: UserRole[]): UserRole {
   return role;
 }
 
-export function canEdit(): boolean {
-  const role = getUserRole();
+export async function canEdit(): Promise<boolean> {
+  const role = await getUserRole();
   return role === 'admin' || role === 'project_lead';
 }
 

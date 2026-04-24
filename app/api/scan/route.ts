@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { searchArticles } from '@/lib/google-news-rss';
-import { analyseContent } from '@/lib/anthropic';
+import { extract } from '@/lib/articleExtractor';
 import { ensureUserInSupabase } from '@/lib/auth';
+import type { MatchType } from '@/lib/types';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-const ARTICLES_PER_QUERY = 5;
-type MatchType = 'project' | 'client';
+const ARTICLES_PER_QUERY = 15;
+const EXTRACT_CONCURRENCY = 5;
 
 export async function POST(req: NextRequest) {
   const userId = await ensureUserInSupabase();
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
     articles_ingested: number;
     project_matches: number;
     client_matches: number;
+    pending_count: number;
     errors: string[];
   }> = [];
 
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest) {
       articles_ingested: 0,
       project_matches: 0,
       client_matches: 0,
+      pending_count: 0,
       errors: [] as string[],
     };
 
@@ -82,6 +85,16 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Collect candidate articles across both queries, deduping within this
+    // scan so a URL that matches both queries is tagged 'project' (project
+    // query runs first).
+    const candidates: Array<{
+      title: string;
+      url: string;
+      source_text: string;
+      matchType: MatchType;
+    }> = [];
+
     for (const { terms, matchType } of queries) {
       try {
         const articles = await searchArticles(terms, ARTICLES_PER_QUERY);
@@ -89,49 +102,20 @@ export async function POST(req: NextRequest) {
 
         for (const article of articles) {
           if (existingUrls.has(article.url)) continue;
+          if (candidates.some((c) => c.url === article.url)) continue;
 
-          const text = [article.title, article.description, article.content]
+          const sourceText = [article.title, article.description, article.content]
             .filter(Boolean)
             .join('\n\n');
 
-          if (!text.trim()) continue;
+          if (!sourceText.trim()) continue;
 
-          try {
-            const analysis = await analyseContent(text);
-
-            const { error: insertError } = await supabaseAdmin
-              .from('analysis_items')
-              .insert({
-                project_id: project.id,
-                source_text: text,
-                source_type: 'news_article',
-                source_url: article.url,
-                summary: analysis.summary,
-                sentiment: analysis.sentiment,
-                alert_level: analysis.alert_level,
-                notable_voices: analysis.notable_voices,
-                key_themes: analysis.key_themes,
-                recommended_action: analysis.recommended_action,
-                review_status: 'unreviewed',
-                match_type: matchType,
-                created_by: userId,
-              });
-
-            if (insertError) {
-              projectResult.errors.push(
-                `[${matchType}] insert failed for "${article.title}": ${insertError.message}`
-              );
-              continue;
-            }
-
-            existingUrls.add(article.url);
-            projectResult.articles_ingested++;
-            if (matchType === 'project') projectResult.project_matches++;
-            else projectResult.client_matches++;
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Analysis failed';
-            projectResult.errors.push(`[${matchType}] ${article.title}: ${msg}`);
-          }
+          candidates.push({
+            title: article.title,
+            url: article.url,
+            source_text: sourceText,
+            matchType,
+          });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Feed fetch failed';
@@ -139,9 +123,70 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Extract full article text in parallel, capped at EXTRACT_CONCURRENCY.
+    // No Claude calls inline — analysis is deferred to /api/analyse-pending.
+    // Failed / paywalled extractions aren't errors; they're recorded on the
+    // row via extraction_status and fall back to the RSS snippet for the
+    // worker.
+    for (let i = 0; i < candidates.length; i += EXTRACT_CONCURRENCY) {
+      const chunk = candidates.slice(i, i + EXTRACT_CONCURRENCY);
+      const extractResults = await Promise.allSettled(
+        chunk.map((c) => extract(c.url))
+      );
+
+      for (let j = 0; j < chunk.length; j++) {
+        const candidate = chunk[j];
+        const extractResult = extractResults[j];
+
+        let fullText: string | null = null;
+        let extractionStatus: 'success' | 'failed' | 'paywalled' = 'failed';
+
+        if (extractResult.status === 'fulfilled') {
+          fullText = extractResult.value.text;
+          extractionStatus = extractResult.value.status;
+        }
+        // If rejected, keep the defaults. articleExtractor.extract() is
+        // written not to throw, so this is belt-and-braces.
+
+        try {
+          const { error: insertError } = await supabaseAdmin
+            .from('analysis_items')
+            .insert({
+              project_id: project.id,
+              source_text: candidate.source_text,
+              source_type: 'news_article',
+              source_url: candidate.url,
+              full_text: fullText,
+              extraction_status: extractionStatus,
+              match_type: candidate.matchType,
+              review_status: 'unreviewed',
+              analysis_status: 'pending',
+              created_by: userId,
+            });
+
+          if (insertError) {
+            projectResult.errors.push(
+              `[${candidate.matchType}] insert failed for "${candidate.title}": ${insertError.message}`
+            );
+            continue;
+          }
+
+          existingUrls.add(candidate.url);
+          projectResult.articles_ingested++;
+          projectResult.pending_count++;
+          if (candidate.matchType === 'project') projectResult.project_matches++;
+          else projectResult.client_matches++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Insert failed';
+          projectResult.errors.push(`[${candidate.matchType}] ${msg}`);
+        }
+      }
+    }
+
     results.push(projectResult);
 
-    // Delay between projects to avoid rate limiting from Google (only relevant for multi-project scans)
+    // Delay between projects to avoid rate limiting from Google (only
+    // relevant for multi-project scans).
     if (projects.length > 1) {
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -150,7 +195,7 @@ export async function POST(req: NextRequest) {
   const totalIngested = results.reduce((sum, r) => sum + r.articles_ingested, 0);
 
   return NextResponse.json({
-    message: `Scan complete. ${totalIngested} new article(s) ingested.`,
+    message: `Scan complete. ${totalIngested} new article(s) ingested (awaiting analysis).`,
     results,
   });
 }

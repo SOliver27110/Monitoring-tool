@@ -85,6 +85,10 @@ export interface AnalysisResult {
 
 export type MatchType = 'project' | 'client';
 
+export type ExtractionStatus = 'pending' | 'success' | 'failed' | 'paywalled';
+
+export type AnalysisStatus = 'pending' | 'analysing' | 'complete' | 'failed';
+
 export interface AnalysisItem {
   id: string;
   project_id: string | null;
@@ -92,16 +96,22 @@ export interface AnalysisItem {
   source_text: string;
   source_type: SourceType | null;
   source_url: string | null;
-  summary: string;
-  sentiment: Sentiment;
-  alert_level: ItemAlertLevel;
+  full_text: string | null;
+  extraction_status: ExtractionStatus | null;
+  summary: string | null;
+  sentiment: Sentiment | null;
+  alert_level: ItemAlertLevel | null;
   notable_voices: string[];
   key_themes: string[];
-  recommended_action: string;
+  recommended_action: string | null;
   review_status: ReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
   match_type: MatchType | null;
+  analysis_status: AnalysisStatus;
+  analysis_attempts: number;
+  analysis_last_error: string | null;
+  analysis_completed_at: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

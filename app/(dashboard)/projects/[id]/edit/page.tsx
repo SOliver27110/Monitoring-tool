@@ -23,9 +23,10 @@ export default function EditProjectPage() {
         setInitialData({
           client_name: project.client_name,
           site_name: project.site_name,
-          planning_reference: project.planning_reference,
+          planning_reference: project.planning_reference ?? '',
           lpa: project.lpa,
           boolean_search_terms: project.boolean_search_terms,
+          client_search_terms: project.client_search_terms ?? '',
           assigned_lead_id: project.assigned_lead_id,
           application_stage: project.application_stage,
           key_dates: project.key_dates ?? {},

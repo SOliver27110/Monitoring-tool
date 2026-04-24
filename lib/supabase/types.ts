@@ -35,9 +35,10 @@ export interface Database {
           id: string;
           client_name: string;
           site_name: string;
-          planning_reference: string;
+          planning_reference: string | null;
           lpa: string;
           boolean_search_terms: string;
+          client_search_terms: string | null;
           assigned_lead_id: string | null;
           application_stage: string;
           key_dates: Record<string, string>;
@@ -50,9 +51,10 @@ export interface Database {
           id?: string;
           client_name: string;
           site_name: string;
-          planning_reference: string;
+          planning_reference?: string | null;
           lpa: string;
           boolean_search_terms: string;
+          client_search_terms?: string | null;
           assigned_lead_id?: string | null;
           application_stage: string;
           key_dates?: Record<string, string>;
@@ -64,9 +66,10 @@ export interface Database {
         Update: {
           client_name?: string;
           site_name?: string;
-          planning_reference?: string;
+          planning_reference?: string | null;
           lpa?: string;
           boolean_search_terms?: string;
+          client_search_terms?: string | null;
           assigned_lead_id?: string | null;
           application_stage?: string;
           key_dates?: Record<string, string>;
@@ -91,6 +94,7 @@ export interface Database {
           review_status: string;
           reviewed_by: string | null;
           reviewed_at: string | null;
+          match_type: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -110,6 +114,7 @@ export interface Database {
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
+          match_type?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -121,6 +126,7 @@ export interface Database {
           review_status?: string;
           reviewed_by?: string | null;
           reviewed_at?: string | null;
+          match_type?: string | null;
           updated_at?: string;
         };
         Relationships: [];

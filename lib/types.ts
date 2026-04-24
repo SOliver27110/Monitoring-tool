@@ -19,7 +19,8 @@ export type ApplicationStage =
   | 'Committee'
   | 'Appeal'
   | 'Approved'
-  | 'Refused';
+  | 'Refused'
+  | 'Ongoing Media Monitoring';
 
 export interface KeyDates {
   submission?: string;
@@ -33,9 +34,10 @@ export interface Project {
   id: string;
   client_name: string;
   site_name: string;
-  planning_reference: string;
+  planning_reference: string | null;
   lpa: string;
   boolean_search_terms: string;
+  client_search_terms: string | null;
   assigned_lead_id: string | null;
   assigned_lead?: AppUser;
   application_stage: ApplicationStage;
@@ -52,6 +54,7 @@ export interface ProjectFormData {
   planning_reference: string;
   lpa: string;
   boolean_search_terms: string;
+  client_search_terms: string;
   assigned_lead_id: string | null;
   application_stage: ApplicationStage;
   key_dates: KeyDates;
@@ -80,6 +83,8 @@ export interface AnalysisResult {
   recommended_action: string;
 }
 
+export type MatchType = 'project' | 'client';
+
 export interface AnalysisItem {
   id: string;
   project_id: string | null;
@@ -96,6 +101,7 @@ export interface AnalysisItem {
   review_status: ReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  match_type: MatchType | null;
   created_by: string;
   created_at: string;
   updated_at: string;

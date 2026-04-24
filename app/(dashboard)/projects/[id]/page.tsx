@@ -14,6 +14,7 @@ import { SentimentTrend } from '@/components/dashboard/SentimentTrend';
 import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
+import { ScanButton } from '@/components/projects/ScanButton';
 import { Pencil, FileText, BarChart3 } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
@@ -138,6 +139,7 @@ export default function ProjectDashboardPage() {
         <div className="flex items-center gap-3">
           <ProjectAlertBadge level={project.alert_level as AlertLevel} />
           <RoleGate allowedRoles={['admin', 'project_lead']}>
+            <ScanButton projectId={projectId} />
             <Link href={`/projects/${projectId}/edit`}>
               <Button variant="secondary" size="sm">
                 <Pencil className="h-4 w-4" />
@@ -158,7 +160,7 @@ export default function ProjectDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Card>
           <div className="text-sm text-gray-500">Planning Reference</div>
-          <div className="mt-1 font-medium">{project.planning_reference}</div>
+          <div className="mt-1 font-medium">{project.planning_reference ?? '—'}</div>
         </Card>
         <Card>
           <div className="text-sm text-gray-500">LPA</div>

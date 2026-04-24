@@ -157,7 +157,7 @@ export function ProjectTable() {
                         <div className="text-xs text-gray-500">{project.site_name}</div>
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{project.planning_reference}</td>
+                    <td className="px-4 py-3 text-gray-600">{project.planning_reference ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate">{project.lpa}</td>
                     <td className="px-4 py-3">
                       <Badge variant="purple">{project.application_stage}</Badge>
@@ -205,8 +205,12 @@ export function ProjectTable() {
                   <ProjectAlertBadge level={project.alert_level as AlertLevel} />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span>{project.planning_reference}</span>
-                  <span>&middot;</span>
+                  {project.planning_reference && (
+                    <>
+                      <span>{project.planning_reference}</span>
+                      <span>&middot;</span>
+                    </>
+                  )}
                   <Badge variant="purple">{project.application_stage}</Badge>
                 </div>
               </Link>

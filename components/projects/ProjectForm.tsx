@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import type { ProjectFormData, AppUser, ApplicationStage, AlertLevel } from '@/lib/types';
 
@@ -16,6 +17,7 @@ const APPLICATION_STAGES: { value: ApplicationStage; label: string }[] = [
   { value: 'Appeal', label: 'Appeal' },
   { value: 'Approved', label: 'Approved' },
   { value: 'Refused', label: 'Refused' },
+  { value: 'Ongoing Media Monitoring', label: 'Ongoing Media Monitoring' },
 ];
 
 const ALERT_LEVELS: { value: AlertLevel; label: string }[] = [
@@ -42,12 +44,17 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
       planning_reference: '',
       lpa: '',
       boolean_search_terms: '',
+      client_search_terms: '',
       assigned_lead_id: null,
       application_stage: 'Pre-app',
       key_dates: {},
       alert_level: 'green',
     }
   );
+
+  // One-shot seed for the project search terms on new projects only.
+  // Once the user has typed anything, or the seed has fired once, don't overwrite.
+  const hasSeeded = useRef(Boolean(initialData) || Boolean(initialData?.boolean_search_terms));
 
   useEffect(() => {
     fetch('/api/users')
@@ -71,13 +78,20 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
     }));
   }
 
-  // Auto-generate boolean search terms
+  // One-shot seed: auto-generate project search terms the first time the user
+  // has entered enough context, only for new projects where the field is empty.
   useEffect(() => {
-    const parts = [form.planning_reference, form.site_name, form.client_name].filter(Boolean);
-    if (parts.length > 0) {
-      updateField('boolean_search_terms', parts.join(' OR '));
+    if (hasSeeded.current) return;
+    if (form.boolean_search_terms) {
+      hasSeeded.current = true;
+      return;
     }
-  }, [form.planning_reference, form.site_name, form.client_name]);
+    const parts = [form.planning_reference, form.site_name, form.client_name].filter(Boolean);
+    if (parts.length >= 2) {
+      updateField('boolean_search_terms', parts.join(' OR '));
+      hasSeeded.current = true;
+    }
+  }, [form.planning_reference, form.site_name, form.client_name, form.boolean_search_terms]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,10 +150,9 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
         <Input
           id="planning_reference"
           label="Planning Reference"
-          required
           value={form.planning_reference}
           onChange={(e) => updateField('planning_reference', e.target.value)}
-          placeholder="e.g. 24/01234/FUL"
+          placeholder="e.g. 24/01234/FUL (optional)"
         />
         <Input
           id="lpa"
@@ -150,16 +163,30 @@ export function ProjectForm({ initialData, projectId }: ProjectFormProps) {
           placeholder="e.g. South Oxfordshire District Council"
         />
         <div className="sm:col-span-2">
-          <Input
+          <Textarea
             id="boolean_search_terms"
-            label="Boolean Search Terms"
+            label="Project search terms"
             required
+            rows={2}
             value={form.boolean_search_terms}
             onChange={(e) => updateField('boolean_search_terms', e.target.value)}
-            placeholder="Auto-generated from reference, site name, and client"
+            placeholder='e.g. "Heyford Park" OR "RAF Upper Heyford"'
           />
           <p className="mt-1 text-xs text-gray-400">
-            Auto-generated. Edit to refine your monitoring search query.
+            Boolean query used to find coverage of this specific site.
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <Textarea
+            id="client_search_terms"
+            label="Client search terms (optional)"
+            rows={2}
+            value={form.client_search_terms}
+            onChange={(e) => updateField('client_search_terms', e.target.value)}
+            placeholder='e.g. "Dorchester Living"'
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Used to pick up coverage about the client across all their work, not just this site.
           </p>
         </div>
         <Select

@@ -99,21 +99,30 @@ export async function POST(req: NextRequest) {
           try {
             const analysis = await analyseContent(text);
 
-            await supabaseAdmin.from('analysis_items').insert({
-              project_id: project.id,
-              source_text: text,
-              source_type: 'news_article',
-              source_url: article.url,
-              summary: analysis.summary,
-              sentiment: analysis.sentiment,
-              alert_level: analysis.alert_level,
-              notable_voices: analysis.notable_voices,
-              key_themes: analysis.key_themes,
-              recommended_action: analysis.recommended_action,
-              review_status: 'unreviewed',
-              match_type: matchType,
-              created_by: userId,
-            });
+            const { error: insertError } = await supabaseAdmin
+              .from('analysis_items')
+              .insert({
+                project_id: project.id,
+                source_text: text,
+                source_type: 'news_article',
+                source_url: article.url,
+                summary: analysis.summary,
+                sentiment: analysis.sentiment,
+                alert_level: analysis.alert_level,
+                notable_voices: analysis.notable_voices,
+                key_themes: analysis.key_themes,
+                recommended_action: analysis.recommended_action,
+                review_status: 'unreviewed',
+                match_type: matchType,
+                created_by: userId,
+              });
+
+            if (insertError) {
+              projectResult.errors.push(
+                `[${matchType}] insert failed for "${article.title}": ${insertError.message}`
+              );
+              continue;
+            }
 
             existingUrls.add(article.url);
             projectResult.articles_ingested++;

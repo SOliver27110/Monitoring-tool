@@ -36,7 +36,7 @@ export function QueueList() {
       if (res.ok) {
         const data = await res.json();
         const sorted = (data as AnalysisItem[]).sort(
-          (a, b) => (ALERT_ORDER[a.alert_level] ?? 3) - (ALERT_ORDER[b.alert_level] ?? 3)
+          (a, b) => (ALERT_ORDER[a.alert_level ?? ''] ?? 3) - (ALERT_ORDER[b.alert_level ?? ''] ?? 3)
         );
         setItems(sorted);
       }

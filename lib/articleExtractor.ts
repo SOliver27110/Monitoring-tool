@@ -1,16 +1,27 @@
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
+import { GoogleDecoder } from 'google-news-url-decoder';
 
 export interface ExtractResult {
   text: string | null;
   status: 'success' | 'failed' | 'paywalled';
+  publisher_url: string | null;
+  error: string | null;
 }
 
 const FETCH_TIMEOUT_MS = 10_000;
+// Hard ceiling on the whole extract() call (unwrap + fetch + parse). One
+// slow article must not pin a concurrency slot in scan/route.ts for the
+// full 120s Vercel budget.
+const TOTAL_TIMEOUT_MS = 25_000;
 const MIN_TEXT_CHARS = 300;
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const DOMAIN_THROTTLE_MS = 2_000;
 const USER_AGENT = 'Mozilla/5.0 (compatible; DevCommsMonitor/1.0)';
+
+const GOOGLE_NEWS_HOSTS = new Set(['news.google.com', 'www.news.google.com']);
+
+const decoder = new GoogleDecoder();
 
 // Per-domain throttle. Holds the earliest timestamp we're allowed to issue
 // a new request for that host. Module-scoped so it persists across calls
@@ -29,6 +40,11 @@ function hostOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isGoogleNewsRedirect(url: string): boolean {
+  const host = hostOf(url);
+  return host !== null && GOOGLE_NEWS_HOSTS.has(host);
 }
 
 async function throttle(host: string): Promise<void> {
@@ -64,8 +80,20 @@ async function readBodyCapped(response: Response): Promise<string | null> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function extract(url: string): Promise<ExtractResult> {
-  const initialHost = hostOf(url);
+// Resolve a Google News redirect URL to its underlying publisher URL.
+// Throws on failure so the caller can surface the reason; non-Google URLs
+// pass through unchanged so direct publisher feeds (Batch C) work without
+// a separate code path.
+export async function unwrapGoogleNewsUrl(url: string): Promise<string> {
+  if (!isGoogleNewsRedirect(url)) return url;
+
+  const result = await decoder.decode(url);
+  if (result.status) return result.decoded_url;
+  throw new Error(result.message);
+}
+
+async function extractFromPublisher(publisherUrl: string): Promise<ExtractResult> {
+  const initialHost = hostOf(publisherUrl);
   if (initialHost) {
     await throttle(initialHost);
   }
@@ -74,14 +102,19 @@ export async function extract(url: string): Promise<ExtractResult> {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(publisherUrl, {
       redirect: 'follow',
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      return { text: null, status: 'failed' };
+      return {
+        text: null,
+        status: 'failed',
+        publisher_url: publisherUrl,
+        error: `Publisher returned HTTP ${response.status}`,
+      };
     }
 
     // Reserve a throttle slot against the final publisher host so any
@@ -93,12 +126,22 @@ export async function extract(url: string): Promise<ExtractResult> {
 
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.toLowerCase().includes('text/html')) {
-      return { text: null, status: 'failed' };
+      return {
+        text: null,
+        status: 'failed',
+        publisher_url: publisherUrl,
+        error: `Non-HTML content-type: ${contentType || 'unknown'}`,
+      };
     }
 
     const html = await readBodyCapped(response);
     if (html === null) {
-      return { text: null, status: 'failed' };
+      return {
+        text: null,
+        status: 'failed',
+        publisher_url: publisherUrl,
+        error: `Body exceeded ${MAX_BODY_BYTES} bytes`,
+      };
     }
 
     const { document } = parseHTML(html);
@@ -109,13 +152,62 @@ export async function extract(url: string): Promise<ExtractResult> {
     const text = article?.textContent?.trim() ?? '';
 
     if (text.length < MIN_TEXT_CHARS) {
-      return { text: null, status: 'paywalled' };
+      return {
+        text: null,
+        status: 'paywalled',
+        publisher_url: publisherUrl,
+        error: null,
+      };
     }
 
-    return { text, status: 'success' };
-  } catch {
-    return { text: null, status: 'failed' };
+    return {
+      text,
+      status: 'success',
+      publisher_url: publisherUrl,
+      error: null,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Publisher fetch failed';
+    return {
+      text: null,
+      status: 'failed',
+      publisher_url: publisherUrl,
+      error: msg,
+    };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function extract(url: string): Promise<ExtractResult> {
+  const totalDeadline = new Promise<ExtractResult>((resolve) => {
+    setTimeout(() => {
+      resolve({
+        text: null,
+        status: 'failed',
+        publisher_url: null,
+        error: `Extract exceeded ${TOTAL_TIMEOUT_MS}ms total budget`,
+      });
+    }, TOTAL_TIMEOUT_MS);
+  });
+
+  const work = (async (): Promise<ExtractResult> => {
+    let publisherUrl: string;
+    try {
+      publisherUrl = await unwrapGoogleNewsUrl(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unwrap failed';
+      console.error(`[articleExtractor] Google News unwrap failed for ${url}: ${msg}`);
+      return {
+        text: null,
+        status: 'failed',
+        publisher_url: null,
+        error: `Google News unwrap failed: ${msg}`,
+      };
+    }
+
+    return extractFromPublisher(publisherUrl);
+  })();
+
+  return Promise.race([work, totalDeadline]);
 }

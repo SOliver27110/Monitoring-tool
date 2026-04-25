@@ -8,7 +8,11 @@ import type { MatchType } from '@/lib/types';
 export const maxDuration = 120;
 
 const ARTICLES_PER_QUERY = 15;
-const EXTRACT_CONCURRENCY = 5;
+// 3 (down from 5) to reduce concurrent load on Google's batchexecute
+// endpoint used by the Google News URL decoder. Each extract now does up
+// to 3 outbound fetches (sig/timestamp scrape + batchexecute + publisher),
+// so concurrency 5 was at risk of soft-throttling on busy scans.
+const EXTRACT_CONCURRENCY = 3;
 
 export async function POST(req: NextRequest) {
   const userId = await ensureUserInSupabase();
@@ -125,9 +129,10 @@ export async function POST(req: NextRequest) {
 
     // Extract full article text in parallel, capped at EXTRACT_CONCURRENCY.
     // No Claude calls inline — analysis is deferred to /api/analyse-pending.
-    // Failed / paywalled extractions aren't errors; they're recorded on the
-    // row via extraction_status and fall back to the RSS snippet for the
-    // worker.
+    // extract() unwraps Google News redirect URLs to the publisher URL
+    // before fetching; on unwrap or fetch failure the row is still inserted
+    // with extraction_status='failed' and the worker analyses the RSS
+    // snippet (source_text). Same fallback path as the paywalled case.
     for (let i = 0; i < candidates.length; i += EXTRACT_CONCURRENCY) {
       const chunk = candidates.slice(i, i + EXTRACT_CONCURRENCY);
       const extractResults = await Promise.allSettled(
@@ -140,13 +145,27 @@ export async function POST(req: NextRequest) {
 
         let fullText: string | null = null;
         let extractionStatus: 'success' | 'failed' | 'paywalled' = 'failed';
+        let publisherUrl: string | null = null;
 
         if (extractResult.status === 'fulfilled') {
           fullText = extractResult.value.text;
           extractionStatus = extractResult.value.status;
+          publisherUrl = extractResult.value.publisher_url;
         }
         // If rejected, keep the defaults. articleExtractor.extract() is
         // written not to throw, so this is belt-and-braces.
+
+        // Fall back to the original (Google News redirect) URL when unwrap
+        // failed entirely. Keeps source_url non-null so the dedup set still
+        // catches re-scans of the same wrapped URL.
+        const sourceUrl = publisherUrl ?? candidate.url;
+
+        // Post-unwrap dedup: a different RSS query (or a different feed
+        // source in Batch C) might have surfaced the same publisher URL.
+        // Catch that here, after we've paid for the unwrap.
+        if (publisherUrl && existingUrls.has(publisherUrl)) {
+          continue;
+        }
 
         try {
           const { error: insertError } = await supabaseAdmin
@@ -155,7 +174,8 @@ export async function POST(req: NextRequest) {
               project_id: project.id,
               source_text: candidate.source_text,
               source_type: 'news_article',
-              source_url: candidate.url,
+              source_url: sourceUrl,
+              original_source_url: candidate.url,
               full_text: fullText,
               extraction_status: extractionStatus,
               match_type: candidate.matchType,
@@ -171,6 +191,7 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
+          existingUrls.add(sourceUrl);
           existingUrls.add(candidate.url);
           projectResult.articles_ingested++;
           projectResult.pending_count++;

@@ -96,6 +96,7 @@ export interface AnalysisItem {
   source_text: string;
   source_type: SourceType | null;
   source_url: string | null;
+  original_source_url: string | null;
   full_text: string | null;
   extraction_status: ExtractionStatus | null;
   summary: string | null;

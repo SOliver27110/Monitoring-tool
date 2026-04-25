@@ -85,6 +85,7 @@ export interface Database {
           source_text: string;
           source_type: string | null;
           source_url: string | null;
+          original_source_url: string | null;
           full_text: string | null;
           extraction_status: string | null;
           summary: string | null;
@@ -111,6 +112,7 @@ export interface Database {
           source_text: string;
           source_type?: string | null;
           source_url?: string | null;
+          original_source_url?: string | null;
           full_text?: string | null;
           extraction_status?: string | null;
           summary?: string | null;
@@ -135,6 +137,7 @@ export interface Database {
           project_id?: string | null;
           source_type?: string | null;
           source_url?: string | null;
+          original_source_url?: string | null;
           full_text?: string | null;
           extraction_status?: string | null;
           summary?: string | null;

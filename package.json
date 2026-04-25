@@ -14,6 +14,7 @@
     "@mozilla/readability": "^0.6.0",
     "@react-pdf/renderer": "^3.4.5",
     "@supabase/supabase-js": "^2.47.10",
+    "google-news-url-decoder": "^1.2.1",
     "linkedom": "^0.18.12",
     "lucide-react": "^0.400.0",
     "next": "14.2.21",

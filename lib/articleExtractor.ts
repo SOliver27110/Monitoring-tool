@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom';
+import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 
 export interface ExtractResult {
@@ -101,8 +101,11 @@ export async function extract(url: string): Promise<ExtractResult> {
       return { text: null, status: 'failed' };
     }
 
-    const dom = new JSDOM(html, { url: response.url });
-    const article = new Readability(dom.window.document).parse();
+    const { document } = parseHTML(html);
+    const base = document.createElement('base');
+    base.setAttribute('href', response.url);
+    document.head?.prepend(base);
+    const article = new Readability(document as unknown as Document).parse();
     const text = article?.textContent?.trim() ?? '';
 
     if (text.length < MIN_TEXT_CHARS) {

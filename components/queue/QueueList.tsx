@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { QueueItem } from './QueueItem';
+import { AnalysePendingButton } from './AnalysePendingButton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { RoleGate } from '@/components/ui/RoleGate';
 import { useToast } from '@/components/ui/Toast';
 import { useQueueKeyboard } from '@/hooks/useQueueKeyboard';
 import { Inbox } from 'lucide-react';
@@ -61,6 +63,9 @@ export function QueueList() {
   async function reviewItem(index: number, action: 'approve' | 'dismiss') {
     const item = items[index];
     if (!item) return;
+    // Block keyboard-shortcut approval of items that haven't been analysed
+    // yet — keeps incomplete data out of reports. Dismiss is fine in any state.
+    if (action === 'approve' && item.analysis_status !== 'complete') return;
 
     try {
       const res = await fetch(`/api/items/${item.id}/review`, {
@@ -79,6 +84,35 @@ export function QueueList() {
       );
     } catch {
       showToast('Failed to review item', 'error');
+    }
+  }
+
+  async function reanalyseItem(index: number) {
+    const item = items[index];
+    if (!item) return;
+
+    try {
+      const res = await fetch(`/api/items/${item.id}/reanalyse`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? 'Failed to re-analyse');
+      }
+      setItems((prev) =>
+        prev.map((it, i) =>
+          i === index
+            ? {
+                ...it,
+                analysis_status: 'pending' as const,
+                analysis_attempts: 0,
+                analysis_last_error: null,
+              }
+            : it
+        )
+      );
+      showToast('Queued for re-analysis', 'info');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to re-analyse';
+      showToast(message, 'error');
     }
   }
 
@@ -148,8 +182,34 @@ export function QueueList() {
     label: `${p.client_name} — ${p.site_name}`,
   }));
 
+  const pendingCount = items.filter(
+    (i) => i.analysis_status === 'pending' || i.analysis_status === 'analysing'
+  ).length;
+  const failedCount = items.filter((i) => i.analysis_status === 'failed').length;
+
   return (
     <>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="text-sm text-gray-600">
+          {pendingCount > 0 || failedCount > 0 ? (
+            <>
+              <span className="font-medium">{pendingCount}</span> pending
+              {failedCount > 0 && (
+                <>
+                  ,{' '}
+                  <span className="font-medium text-red-600">{failedCount}</span> failed
+                </>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-400">All items analysed</span>
+          )}
+        </div>
+        <RoleGate allowedRoles={['admin', 'project_lead']}>
+          <AnalysePendingButton onComplete={fetchItems} disabled={pendingCount === 0} />
+        </RoleGate>
+      </div>
+
       <div className="space-y-3">
         {items.map((item, index) => (
           <QueueItem
@@ -158,6 +218,7 @@ export function QueueList() {
             selected={index === selectedIndex}
             onApprove={() => reviewItem(index, 'approve')}
             onDismiss={() => reviewItem(index, 'dismiss')}
+            onReanalyse={() => reanalyseItem(index)}
             onClick={() => setSelectedIndex(index)}
           />
         ))}

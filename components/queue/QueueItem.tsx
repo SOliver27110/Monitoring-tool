@@ -3,7 +3,8 @@
 import { Badge } from '@/components/ui/Badge';
 import { ItemAlertBadge } from '@/components/ui/AlertBadge';
 import { Button } from '@/components/ui/Button';
-import { Check, X } from 'lucide-react';
+import { RoleGate } from '@/components/ui/RoleGate';
+import { Check, X, RefreshCw } from 'lucide-react';
 import type { AnalysisItem, Sentiment } from '@/lib/types';
 
 interface QueueItemProps {
@@ -11,6 +12,7 @@ interface QueueItemProps {
   selected: boolean;
   onApprove: () => void;
   onDismiss: () => void;
+  onReanalyse: () => void;
   onClick: () => void;
 }
 
@@ -21,8 +23,12 @@ const sentimentVariant: Record<Sentiment, 'success' | 'default' | 'danger' | 'wa
   Mixed: 'warning',
 };
 
-export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: QueueItemProps) {
-  const isActionRequired = item.alert_level === 'Action Required';
+export function QueueItem({ item, selected, onApprove, onDismiss, onReanalyse, onClick }: QueueItemProps) {
+  const isPending = item.analysis_status === 'pending' || item.analysis_status === 'analysing';
+  const isFailed = item.analysis_status === 'failed';
+  const isComplete = item.analysis_status === 'complete';
+  const isActionRequired = isComplete && item.alert_level === 'Action Required';
+  const isPaywalled = isComplete && item.extraction_status === 'paywalled';
   const notableVoices = item.notable_voices ?? [];
 
   return (
@@ -37,16 +43,32 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            {item.sentiment && (
+            {isPending && (
+              <Badge variant="default">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
+                  Analyzing…
+                </span>
+              </Badge>
+            )}
+            {isFailed && (
+              <>
+                <Badge variant="danger">Analysis failed</Badge>
+                <span className="text-xs text-gray-500">
+                  {item.analysis_attempts}/3 attempts
+                </span>
+              </>
+            )}
+            {isComplete && item.sentiment && (
               <Badge variant={sentimentVariant[item.sentiment as Sentiment]}>
                 {item.sentiment}
               </Badge>
             )}
-            <ItemAlertBadge level={item.alert_level as AnalysisItem['alert_level']} />
+            {isComplete && (
+              <ItemAlertBadge level={item.alert_level as AnalysisItem['alert_level']} />
+            )}
             {item.project && (
-              <Badge variant="purple">
-                {item.project.client_name}
-              </Badge>
+              <Badge variant="purple">{item.project.client_name}</Badge>
             )}
             {item.match_type === 'project' && (
               <Badge variant="info">Project match</Badge>
@@ -55,33 +77,83 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onClick }: Que
               <Badge variant="default">Client match</Badge>
             )}
           </div>
-          <p className="text-sm text-gray-900 mb-1">{item.summary ?? '—'}</p>
-          <p className="text-xs text-gray-500 italic">{item.recommended_action ?? '—'}</p>
 
-          {notableVoices.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {notableVoices.map((voice, i) => (
-                <span key={i} className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-0.5">
-                  {voice}
-                </span>
-              ))}
-            </div>
+          {isPending && (
+            <>
+              <p className="text-xs font-medium text-gray-500 mb-1">Pending analysis</p>
+              <p className="text-sm text-gray-700 line-clamp-2">{item.source_text}</p>
+            </>
+          )}
+
+          {isFailed && (
+            <>
+              <p className="text-sm text-gray-700 line-clamp-2">{item.source_text}</p>
+              {item.analysis_last_error && (
+                <p
+                  className="mt-1 text-xs text-red-600 italic truncate"
+                  title={item.analysis_last_error}
+                >
+                  {item.analysis_last_error}
+                </p>
+              )}
+            </>
+          )}
+
+          {isComplete && (
+            <>
+              <p className="text-sm text-gray-900 mb-1">{item.summary ?? '—'}</p>
+              <p className="text-xs text-gray-500 italic">{item.recommended_action ?? '—'}</p>
+
+              {notableVoices.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {notableVoices.map((voice, i) => (
+                    <span key={i} className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-0.5">
+                      {voice}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {isPaywalled && (
+                <p className="mt-2 inline-block rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700">
+                  Analysis based on summary — full article paywalled
+                </p>
+              )}
+            </>
           )}
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onApprove();
-            }}
-            title="Approve (a)"
-            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-          >
-            <Check className="h-4 w-4" />
-          </Button>
+          {isComplete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove();
+              }}
+              title="Approve (a)"
+              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+          )}
+          {isFailed && (
+            <RoleGate allowedRoles={['admin', 'project_lead']}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReanalyse();
+                }}
+                title="Re-analyse"
+                className="text-brand-purple hover:bg-purple-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </RoleGate>
+          )}
           <Button
             variant="ghost"
             size="sm"

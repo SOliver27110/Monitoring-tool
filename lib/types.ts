@@ -113,6 +113,7 @@ export interface AnalysisItem {
   analysis_attempts: number;
   analysis_last_error: string | null;
   analysis_completed_at: string | null;
+  feed_source_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

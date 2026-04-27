@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { RoleGate } from '@/components/ui/RoleGate';
 import { Check, X, RefreshCw, ExternalLink } from 'lucide-react';
 import type { AnalysisItem, Sentiment } from '@/lib/types';
+import { FEED_SOURCE_LABELS, type FeedSourceId } from '@/lib/feedSourceLabels';
 
 interface QueueItemProps {
   item: AnalysisItem;
@@ -75,6 +76,11 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onReanalyse, o
             )}
             {item.match_type === 'client' && (
               <Badge variant="default">Client match</Badge>
+            )}
+            {item.feed_source_id && (
+              <Badge variant="default">
+                {FEED_SOURCE_LABELS[item.feed_source_id as FeedSourceId] ?? item.feed_source_id}
+              </Badge>
             )}
           </div>
 

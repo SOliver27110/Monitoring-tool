@@ -1,6 +1,6 @@
 'use client';
 
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Link } from '@react-pdf/renderer';
 import type { ReportContent } from '@/lib/types';
 
 const styles = StyleSheet.create({
@@ -91,6 +91,10 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginLeft: 8,
   },
+  citedLink: {
+    color: '#801872',
+    textDecoration: 'underline',
+  },
   footer: {
     position: 'absolute',
     bottom: 30,
@@ -138,6 +142,7 @@ function trendLabel(trend: string): string {
 export function ReportPDF({ content, generatedAt, weekStart, weekEnd }: ReportPDFProps) {
   const notableVoices = content.notable_voices ?? [];
   const sourcesReviewed = content.sources_reviewed ?? [];
+  const citedArticles = content.cited_articles ?? [];
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -193,6 +198,24 @@ export function ReportPDF({ content, generatedAt, weekStart, weekEnd }: ReportPD
             </Text>
           ))}
         </View>
+
+        {citedArticles.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cited articles</Text>
+            {citedArticles.map((article, i) => (
+              <Text key={i} style={styles.listItem}>
+                •{' '}
+                {article.url ? (
+                  <Link src={article.url} style={styles.citedLink}>
+                    {article.summary}
+                  </Link>
+                ) : (
+                  article.summary
+                )}
+              </Text>
+            ))}
+          </View>
+        )}
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>DevComms Media Monitor</Text>

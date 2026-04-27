@@ -17,6 +17,7 @@ const trendLabel: Record<string, string> = {
 export function ReportPreview({ content, generatedAt }: ReportPreviewProps) {
   const notableVoices = content.notable_voices ?? [];
   const sourcesReviewed = content.sources_reviewed ?? [];
+  const citedArticles = content.cited_articles ?? [];
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
       <div className="border-b border-gray-200 pb-4">
@@ -81,6 +82,30 @@ export function ReportPreview({ content, generatedAt }: ReportPreviewProps) {
           ))}
         </ul>
       </div>
+
+      {citedArticles.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-1">Cited articles</h3>
+          <ul className="text-sm text-gray-900 list-disc list-inside space-y-1">
+            {citedArticles.map((article, i) => (
+              <li key={i}>
+                {article.url ? (
+                  <a
+                    href={article.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-purple hover:underline"
+                  >
+                    {article.summary}
+                  </a>
+                ) : (
+                  article.summary
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

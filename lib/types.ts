@@ -136,6 +136,11 @@ export interface Report {
   created_at: string;
 }
 
+export interface CitedArticle {
+  summary: string;
+  url: string | null;
+}
+
 export interface ReportContent {
   client_name: string;
   site_name: string;
@@ -146,6 +151,8 @@ export interface ReportContent {
   notable_voices: string[];
   items_requiring_action: string;
   sources_reviewed: string[];
+  // Present on reports generated after Part 1.5; absent on older reports.
+  cited_articles?: CitedArticle[];
 }
 
 export interface ApiError {

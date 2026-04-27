@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { ensureUserInSupabase, requireRole } from '@/lib/auth';
 import Anthropic from '@anthropic-ai/sdk';
-import type { ReportContent, SentimentTrend } from '@/lib/types';
+import type { CitedArticle, ReportContent, SentimentTrend } from '@/lib/types';
 
 const REPORT_SYSTEM_PROMPT = `You are a media monitoring report writer for a UK planning consultancy. Given the project details and this week's analysis items, produce a structured weekly report.
 
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
   // Get this week's approved items
   const { data: thisWeekItems } = await supabaseAdmin
     .from('analysis_items')
-    .select('id, sentiment, alert_level, summary, recommended_action, notable_voices, source_type')
+    .select('id, sentiment, alert_level, summary, recommended_action, notable_voices, source_type, source_url')
     .eq('project_id', projectId)
     .eq('review_status', 'approved')
     .gte('created_at', weekStart.toISOString())
@@ -196,6 +196,11 @@ ${itemSummaries}`;
     );
   }
 
+  const citedArticles: CitedArticle[] = items.map((i) => ({
+    summary: i.summary as string,
+    url: (i.source_url as string | null) ?? null,
+  }));
+
   const reportContent: ReportContent = {
     client_name: project.client_name,
     site_name: project.site_name,
@@ -206,6 +211,7 @@ ${itemSummaries}`;
     notable_voices: uniqueVoices,
     items_requiring_action: itemsRequiringAction,
     sources_reviewed: sourcesReviewed,
+    cited_articles: citedArticles,
   };
 
   const alertEmoji = alertLevel === 'red' ? '\uD83D\uDD34' : alertLevel === 'yellow' ? '\uD83D\uDFE1' : '\uD83D\uDFE2';

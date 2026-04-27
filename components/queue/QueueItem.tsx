@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ItemAlertBadge } from '@/components/ui/AlertBadge';
 import { Button } from '@/components/ui/Button';
 import { RoleGate } from '@/components/ui/RoleGate';
-import { Check, X, RefreshCw } from 'lucide-react';
+import { Check, X, RefreshCw, ExternalLink } from 'lucide-react';
 import type { AnalysisItem, Sentiment } from '@/lib/types';
 
 interface QueueItemProps {
@@ -82,6 +82,18 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onReanalyse, o
             <>
               <p className="text-xs font-medium text-gray-500 mb-1">Pending analysis</p>
               <p className="text-sm text-gray-700 line-clamp-2">{item.source_text}</p>
+              {item.source_url && (
+                <a
+                  href={item.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-1 inline-flex items-center gap-1 text-xs text-brand-purple hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open article
+                </a>
+              )}
             </>
           )}
 
@@ -96,12 +108,37 @@ export function QueueItem({ item, selected, onApprove, onDismiss, onReanalyse, o
                   {item.analysis_last_error}
                 </p>
               )}
+              {item.source_url && (
+                <a
+                  href={item.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-1 inline-flex items-center gap-1 text-xs text-brand-purple hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open article
+                </a>
+              )}
             </>
           )}
 
           {isComplete && (
             <>
-              <p className="text-sm text-gray-900 mb-1">{item.summary ?? '—'}</p>
+              {item.source_url ? (
+                <a
+                  href={item.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm text-gray-900 mb-1 block hover:text-brand-purple hover:underline"
+                >
+                  {item.summary ?? '—'}
+                  <ExternalLink className="inline-block h-3 w-3 ml-1 align-text-top opacity-60" />
+                </a>
+              ) : (
+                <p className="text-sm text-gray-900 mb-1">{item.summary ?? '—'}</p>
+              )}
               <p className="text-xs text-gray-500 italic">{item.recommended_action ?? '—'}</p>
 
               {notableVoices.length > 0 && (

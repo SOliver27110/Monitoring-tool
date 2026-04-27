@@ -15,7 +15,7 @@ import { CoverageVolume } from '@/components/dashboard/CoverageVolume';
 import { NotableVoices } from '@/components/dashboard/NotableVoices';
 import { ActionItems } from '@/components/dashboard/ActionItems';
 import { ScanButton } from '@/components/projects/ScanButton';
-import { Pencil, FileText, BarChart3 } from 'lucide-react';
+import { Pencil, FileText, BarChart3, ExternalLink } from 'lucide-react';
 import type { Project, AnalysisItem, AlertLevel, SentimentTrend as SentimentTrendType } from '@/lib/types';
 
 function getWeekBounds(): { thisWeekStart: string; lastWeekStart: string; lastWeekEnd: string } {
@@ -234,7 +234,19 @@ export default function ProjectDashboardPage() {
                         {new Date(item.created_at).toLocaleDateString('en-GB')}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-900">{item.summary}</p>
+                    {item.source_url ? (
+                      <a
+                        href={item.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-gray-900 block hover:text-brand-purple hover:underline"
+                      >
+                        {item.summary}
+                        <ExternalLink className="inline-block h-3 w-3 ml-1 align-text-top opacity-60" />
+                      </a>
+                    ) : (
+                      <p className="text-sm text-gray-900">{item.summary}</p>
+                    )}
                   </div>
                 ))}
               </div>
